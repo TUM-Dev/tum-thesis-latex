@@ -25,6 +25,12 @@
 \usepackage[final]{microtype}
 \usepackage{caption}
 \usepackage[hidelinks]{hyperref} % hidelinks removes colored boxes around references and links
+\AtBeginDocument{%
+	\hypersetup{
+		pdftitle=\getTitle,
+		pdfauthor=\getAuthor,
+	}
+}
 \usepackage{ifthen}
 
 % Themes
