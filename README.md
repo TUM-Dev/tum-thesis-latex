@@ -38,7 +38,7 @@ The license **applies only to the template**; there are no restrictions on the r
 [overleaf]: https://www.overleaf.com/
 [sample-pdf]: https://raw.github.com/TUM-Dev/tum-thesis-latex/master/build/main.pdf
 [overleaf-learn]: https://www.overleaf.com/learn
-[tum-sharelatex]: https://latex.tum.de/ldap/login
+[tum-sharelatex]: https://sharelatex.tum.de/ldap/login
 [template-authors]: https://github.com/TUM-Dev/tum-thesis-latex/graphs/contributors
 [template-download]: https://github.com/TUM-Dev/tum-thesis-latex/archive/master.zip
 [template-url]: https://github.com/TUM-Dev/tum-thesis-latex
