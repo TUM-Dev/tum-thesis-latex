@@ -11,13 +11,12 @@ jobs:
     - uses: actions/checkout@v2
 
     - name: Build pdf
-      run: make pdf && ls -l && ls -l build
+      run: make pdf
 
     - name: Upload pdf
-      uses: actions/upload-artifact@v2
+      uses: actions/upload-artifact@v3
       with:
         name: thesis
-        path: |
-          - build/main.pdf
-          - build/fachschaft_print.pdf
+        path: build/*.pdf
+        if-no-files-found: error
         retention-days: 14
