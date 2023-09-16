@@ -11,7 +11,7 @@ watch:
 
 .PHONY: _fachschaft-print
 _fachschaft-print:
-	@if grep -sq '^TUM-Dev LaTeX-Thesis-Template: twoside$$' build/main.log; then \
+	@if grep -sq '^TUM-Dev LaTeX-Thesis-Template: twoside$$' $(OUT)/$(FILE).log; then \
 		if [ "$(OUT)/fachschaft_print.pdf" -nt "$(OUT)/$(FILE).pdf" ]; then \
 			echo "fachschaft_print.pdf is up to date"; \
 		else \
