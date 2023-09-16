@@ -12,9 +12,9 @@ jobs:
 
     - name: Build pdf
       run: |
-        - make pdf
-        - ls -l
-        - ls -l build
+        make pdf
+        ls -l
+        ls -l build
 
     - name: Upload pdf
       uses: actions/upload-artifact@v2
