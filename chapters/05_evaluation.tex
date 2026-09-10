@@ -1,0 +1,769 @@
+% !TeX root = ../main.tex
+
+\newcommand{\researchq}[1]{%
+  \textbf{RQ~#1}\label{rq:#1}%
+}
+
+\newcommand{\rqref}[1]{%
+  \hyperref[rq:#1]{\textbf{RQ~#1}}%
+}
+
+\chapter{Evaluation}\label{chapter:evaluation}
+This chapter evaluates the approach presented in
+\autoref{chapter:approach} in two studies. The first examines how the
+inputs to LLM-based seed generation should be configured, varying the
+starting corpus and the scope of the \ac{CoI} and measuring the resulting
+seed corpora in terms of both effectiveness and the resources they consume.
+The second takes the configuration selected there and evaluates it
+end-to-end, comparing the augmented corpus against the project's original
+corpus in fuzzing campaigns targeting known regression bugs. Six subjects
+are used to select the configuration; the fuzzing study adds a further six
+held-out subjects, so that the end-to-end results can be read separately
+for projects that did and did not inform that choice.
+\autoref{sec:eval:setup} describes the subjects and the shared
+experimental infrastructure, \autoref{sec:eval:seedgen} and
+\autoref{sec:eval:fuzzing} report the two studies, and
+\autoref{sec:eval:threats} discusses threats to validity.
+
+\section{Experimental Setup}\label{sec:eval:setup}
+\subsection{Subjects}\label{sec:eval:subjects}
+Our subjects are drawn from the BugOSS benchmark by Kim and Hong~\cite{kimBugOssBenchmarkRealworld2024}, a collection of
+reproducible real-world regression bugs in OSS-Fuzz projects. For each bug it
+provides the bug-inducing commit (BIC), the bug-fixing commit (BFC), a
+bug-revealing input, the locations of the bug and of the fix, and scripts
+to build the respective project. The BIC is what makes the benchmark
+suitable here, as it defines the change from which the \ac{CoI} is
+computed. BugOSS is furthermore the benchmark used by the prior work our
+\ac{CoI} computation is taken from, which keeps the cost of reusing that
+tooling low. When we refer to a project such as libhtp in the remainder
+of this chapter, we mean that project at its BIC, where the respective
+bug has just been introduced.
+
+Of the 21 projects in BugOSS, nine were excluded. Five fail a
+precondition of our setup. \emph{arrow} is excluded because its defect is
+not related to memory access and thus falls outside the bug class we
+address, for which our metrics presuppose a sanitizer-detectable memory
+error at a crash site. \emph{grok} is excluded because its BIC is no
+longer available on GitHub, so no \ac{CoI} can be derived. \emph{gdal} is
+excluded because its bitcode is too large for the static analysis, which
+terminates out of memory. \emph{aspell} and \emph{file} are excluded
+because their harnesses read configuration files supplied outside the
+seed corpus; as the \ac{LLM} never observes these files, the augmentation
+arms would be handicapped by an artifact of the harness rather than by
+the property under study. 
+\emph{openh264} is excluded because its BIC consists solely of removals.
+The \ac{CoI} computation we depend on takes the lines Git classifies as
+added in the BIC as its slicing criterion, and this set is empty for this
+project. Admitting it would require deviating from the procedure applied
+to every other subject.
+The remaining three exclusions, \emph{libarchive}, \emph{exiv2}, and
+\emph{leptonica}, were made to keep the evaluation
+within budget; these four were not selected against a systematic
+criterion. This leaves twelve subjects, six of which are also used to
+select the configuration in \autoref{sec:eval:seedgen}; the split is
+carried through every table and plot in \autoref{sec:eval:fuzzing}.
+
+\begin{table*}[t]
+\centering
+\footnotesize
+\setlength{\tabcolsep}{4pt}
+\caption{Benchmark subjects and starting-corpus coverage.}
+\label{tab:subjects}
+\begin{tabular}{l p{2.4cm} r l r r S[table-format=2.1] r S[table-format=2.1] r}
+\toprule
+ &  &  &  &  &  & \multicolumn{2}{c}{Affected} & \multicolumn{2}{c}{Overall} \\
+\cmidrule(lr){7-8}\cmidrule(lr){9-10}
+Name & Project & \makecell[r]{Size\\(LoC)} & \makecell[l]{Failure\\type} & Seeds & \makecell[r]{Chg.\\lines} & {Cov.\%} & Lines & {Cov.\%} & Lines \\
+\midrule
+\texttt{curl-8000}          & Network data transfer     & 184K & Buf-overrun    & 4,202  & 51  & 47.0 & 16,379 & 44.7 & 40,416 \\
+\texttt{harfbuzz-55779}     & Text-to-font rendering    & 135K & Assert violat. & 1,003  & 105 & 61.9 & 13,387 & 41.6 & 43,729 \\
+\texttt{libhtp-17198}       & HTTP protocol parser      & 40K  & Buf-overrun    & 97     & 26  & 64.4 & 3,656  & 56.0 & 8,910 \\
+\texttt{libxml2-17737}      & XML parsing               & ---  & Use-aft-free   & 1,309  & 32  & 9.4  & 37,427 & 6.6  & 98,005 \\
+\texttt{ndpi-49057}         & Deep packet inspector     & 93K  & Int-overflow   & 351    & 51  & 2.7  & 12,045 & 15.1 & 35,397 \\
+\texttt{openssl-17715}      & SSL/TLS cryptography      & 592K & Buf-overrun    & 2,240  & 91  & 15.0 & 47,152 & 13.9 & 116,691 \\
+\texttt{pcapplusplus-23592} & Packet processing         & 59K  & Buf-overrun    & 615    & 32  & 27.1 & 1,901  & 17.0 & 13,119 \\
+\texttt{poppler-35789}      & PDF file rendering        & 198K & Null-deref     & 476    & 3   & 6.9  & 31,086 & 5.5  & 96,010 \\
+\texttt{readstat-13262}     & Statistics data converter & 31K  & Buf-overrun    & 94     & 5   & 58.0 & 521    & 36.4 & 2,478 \\
+\texttt{usrsctp-18080}      & SCTP protocol             & 85K  & Use-aft-free   & 156    & 6   & 19.9 & 10,090 & 18.1 & 50,277 \\
+\texttt{yara-38952}         & Malware detector          & 63K  & Buf-overrun    & 9      & 277 & 20.7 & 7,644  & 18.5 & 28,119 \\
+\texttt{zstd-21970}         & Data compression          & 104K & Null-deref     & 12,462 & 280 & 69.5 & 6,124  & 34.3 & 30,600 \\
+\bottomrule
+\end{tabular}
+\end{table*}
+
+\subsection{Infrastructure and Configuration}
+All experiments were carried out on a single Fujitsu CELSIUS M770
+workstation running Ubuntu 24.04.4 LTS (kernel 6.8.0). The machine is
+equipped with a 6-core Intel Xeon W-2133 (Skylake, 12 hardware threads,
+\SIrange{1.2}{3.9}{\giga\hertz}, \SI{8.25}{\mebi\byte} L3),
+\SI{64}{\gibi\byte} of RAM, and an NVMe SSD holding all target builds and
+corpora. Targets are not built on the host: each subject is compiled
+inside its OSS-Fuzz build container, so the toolchain, sanitiser
+configuration, and harness definitions are those the project uses
+upstream and vary between subjects. Fuzzing campaigns are likewise
+executed in OSS-Fuzz runner containers, each campaign pinned to a dedicated hardware thread. We use AFL++~5.03a (stable) for all campaigns.
+
+Seed generation uses DeepSeek-V4-Flash-0731~\cite{deepseek-aiDeepSeekV4HighlyEfficient2026},
+a \num{304}-billion-parameter MoE model released under the MIT license,
+accessed through the provider's hosted \ac{API} rather than served locally.
+The model was selected as the strongest openly licensed model with agentic
+capabilities available at the lowest cost per token at the time the
+experiments were conducted. All requests were issued
+during August~2026 against the \texttt{deepseek-v4-flash} endpoint;
+since hosted endpoints may be updated without notice, the results reported
+here are tied to that period. Following the model's recommended settings for
+agentic use, we sample with a temperature of \num{1.0} and $\text{top-}p$ of
+\num{0.95}, at the \texttt{high} reasoning effort level.
+
+\subsection{Statistical Procedure}\label{sec:eval:statistics}
+
+Raw measurements are not directly comparable across projects because their
+numerical scales and attainable values can differ substantially. The analysis
+therefore proceeds in two stages: configurations are compared within each
+project, where they share the same target, and the resulting project-level
+outcomes are aggregated across projects using ranks and normalised scores.
+This follows established practice for cross-benchmark evaluation in fuzzing and
+search-based software engineering~\cite{demsar2006,metzman2021,klees2018,arcuri2014,schloegel2024}.
+
+\paragraph{Effect and significance.}
+For each comparison, statistical significance, effect size, and practical effect
+are considered separately. Statistical significance is assessed at
+$\alpha=0.05$, where $\alpha$ denotes the threshold for rejecting the null
+hypothesis. The \emph{effect size} quantifies the magnitude and direction of a
+difference independently of the metric's scale, whereas the \emph{practical
+effect} expresses the difference in the original metric units, e.g., as a
+difference in coverage, time, or corpus size. Thus, statistical significance
+indicates evidence for a difference, while effect size and practical effect
+describe its magnitude and practical relevance.
+
+The attainable significance level is constrained by the small number of
+campaigns and projects; consequently, even complete separation of the observed
+outcomes may not yield $p<0.05$. A non-significant result is therefore not
+interpreted as evidence of equivalence. Effect estimates and their confidence
+intervals are reported regardless of significance to convey the observed
+direction and magnitude of the differences.
+
+\paragraph{Within-project comparisons.}
+The first stage evaluates configurations within each project.
+Each \emph{arm} denotes one experimental configuration being compared. Each arm
+is evaluated through repeated campaigns with independent random seeds. Because
+the number of campaigns is small and the resulting distributions need not
+satisfy parametric assumptions, rank-based tests are used. Medians are reported
+as descriptive summaries because they are robust to extreme observations.
+
+For two arms, the Mann--Whitney $U$ test compares the independent sets of
+campaign outcomes. The effect size is quantified using the Vargha--Delaney
+$\hat{A}*{12}$ statistic. After orienting each metric such that larger values
+indicate better performance, $\hat{A}*{12}$ denotes the probability that a
+randomly selected run from the first arm outperforms a randomly selected run
+from the second; $\hat{A}_{12}=0.5$ indicates equal stochastic dominance.
+Bootstrap confidence intervals are reported for the estimate. The median
+difference is reported alongside the test and effect size to quantify the
+practical effect in the original metric units.
+
+For three arms, the Kruskal--Wallis test is used as an \emph{omnibus test},
+i.e., a single test of whether there is evidence that at least one arm differs
+from the others. If significant, Dunn's test is applied to the three pairwise
+contrasts, with Holm correction for multiple comparisons.
+
+\paragraph{Across-project aggregation.}
+The within-project comparisons provide project-specific results, but do not
+by themselves provide a summary across the benchmark. The second stage
+therefore treats the \emph{project} as the matched unit of analysis, with each
+project contributing one summary value per arm. Metrics are first oriented so
+that larger values indicate better performance. Two complementary summaries
+are then computed for each project.
+
+The \emph{within-project rank} orders the configurations according to their
+project-level median, with rank $1$ assigned to the best-performing
+configuration. The \emph{average rank} is the mean of these ranks across
+projects and therefore captures consistency across projects. In contrast, the
+\emph{normalised score} expresses a configuration's project-level median
+relative to the best-performing configuration on that project, which receives
+a score of $100$. The \emph{average normalised score} is the mean of these
+scores across projects. Unlike ranks, normalised scores retain information
+about the relative magnitude of differences. Reporting both summaries
+therefore distinguishes consistent advantages from advantages driven by
+larger gains on individual projects.
+
+These project-level summaries also provide the paired observations required
+for statistical testing across projects. For two-arm comparisons, the
+Wilcoxon signed-rank test is applied to the paired project-level differences,
+i.e., the difference between the two configurations' median outcomes within
+each project. For three arms, the Friedman test provides the corresponding
+omnibus test for the matched project blocks; significant results are followed
+by the Nemenyi procedure for pairwise comparisons.
+
+
+\begin{table}[t]
+\centering
+\begin{tabular}{@{}lll@{}}
+\toprule
+\textbf{Comparison} & \textbf{Significance test} & \textbf{Effect / practical measure} \\
+\midrule
+Within project, 2 arms
+& Mann--Whitney $U$
+& $\hat{A}_{12}$ + CI; median difference \\
+Within project, 3 arms
+& Kruskal--Wallis $\rightarrow$ Dunn/Holm
+& pairwise $\hat{A}_{12}$ + CI; median differences \\
+Across projects, 2 arms
+& Wilcoxon signed-rank
+& paired difference \\
+Across projects, 3 arms
+& Friedman $\rightarrow$ Nemenyi
+& mean rank; mean normalised score \\
+\bottomrule
+\end{tabular}
+\caption{Statistical procedures used for each comparison.}
+\label{tab:eval:statistics:summary}
+\end{table}
+
+\section{Seed Generation Study}\label{sec:eval:seedgen}
+In the first study, evaluating how the inputs to LLM-based seed generation
+are configured, we seek to answer the following research questions. 
+
+\begin{description}
+  \item[\researchq{1.1} (starting corpus)] To what extent does the choice of
+    starting corpus (none, distilled, or original) affect the effectiveness
+    and resource requirements of LLM-based seed generation for
+    change-targeted fuzzing?
+  \item[\researchq{1.2} (\ac{CoI} scope)] How do effectiveness and resource
+    requirements change when the \ac{CoI} is bounded rather than taken in
+    full?
+\end{description}
+
+We use \emph{effectiveness} to refer to the reachability of the crash site of the
+generated seeds, their coverage of the affected code, and the resulting
+corpus size; and \emph{resource requirements} to refer to token consumption
+and wall-clock time, split into pre-augmentation and augmentation time.
+
+We vary one factor at a time. \rqref{1.1} is answered at a fixed \ac{CoI}
+scope; \rqref{1.2} is then answered at the starting corpus selected by
+\rqref{1.1}, so that the recommended combination is a configuration we
+measure rather than one we infer. This ordering keeps the study within
+budget, at the cost of characterizing the effect of \ac{CoI} scope only
+for the selected starting corpus. Combining both research questions, we
+determine which starting corpus and which \ac{CoI} scope yields the most
+useful seed corpus per unit of cost, under this restriction.
+
+\subsection{Subjects}\label{sec:eval:seedgen:subjects}
+This study uses six of the twelve subjects. Two considerations motivate
+the restriction. First, this is the study in which the configuration is
+selected, so every subject it uses informs the result. Confining it to a
+subset leaves six projects that played no part in that choice, allowing
+the campaigns in \autoref{sec:eval:fuzzing} to be read separately for
+subjects that did and did not influence it. Second, the cost per subject
+is asymmetric: this study runs four arms with 5 repetitions each, whereas the
+fuzzing study constructs each corpus once and varies only the campaigns.
+The metered token budget is therefore consumed almost entirely here.
+
+Within these constraints the subset was chosen to span the dimensions
+along which seed generation is expected to vary. The primary
+stratification is input format, since an \ac{LLM}'s ability to synthesize
+valid inputs plausibly depends on whether the format exposes
+human-readable structure; the subset is balanced evenly between mixed
+text-binary formats and purely binary ones. It further covers three
+classes of memory-safety defect, program sizes spanning an order of
+magnitude, and both seed-scarce and seed-rich starting conditions. These
+six subjects recur in \autoref{sec:eval:fuzzing} as the tuning subjects.
+
+\subsection{Procedure}\label{sec:eval:seedgen:procedure}
+% State, in this order:
+% 1. Baseline configuration: the level of each factor held fixed while the
+%    other varies, and why that level (cheapest? most common in practice?).
+%    Results for each factor are conditional on this choice.
+% 2. Bounding for \rq{1.2}: what the bound is measured in (call-graph
+%    depth / functions / tokens), the concrete value, and its justification.
+% 3. Additivity assumption: OFAT identifies the best level of each factor
+%    independently; the joint recommendation assumes no interaction. The
+%    confirmation run tests this on one cell only.
+% 4. Metric definitions: reachability (static or dynamic? per seed or
+%    per corpus?), coverage of affected code (edge or line, over which
+%    baseline), corpus size before and after minimisation, plus the share
+%    of generated inputs that are valid and non-duplicate.
+% 5. Selection rule, fixed before results are seen. E.g. lexicographic:
+%    highest reachability, ties within x pp broken by token cost. Without
+%    this, "most useful corpus per unit of cost" is unfalsifiable.
+% 6. Repetitions and statistics: n generation runs per configuration,
+%    Mann--Whitney U with A12 effect size, reported per subject.
+
+\subsection{Results}
+\subsection{Discussion}
+
+\section{Fuzzing Study}\label{sec:eval:fuzzing}
+In the second study, evaluating the resulting corpus in an end-to-end
+fuzzing campaign, we compare the LLM-augmented corpus produced by the
+configuration selected in \rq{1.1} and \rq{1.2} against the project's
+original corpus. We seek to answer the following research questions:
+
+\begin{description}
+  \item[\researchq{2.1} (reliability)] How often do campaigns seeded with
+    each corpus expose the target regression bug within the campaign budget?
+  \item[\researchq{2.2} (generalization)] Does the detection rate on the
+    subjects used to select the configuration differ from that on the held-out
+    subjects?
+  \item[\researchq{2.3} (efficiency)] How does the expected
+    time-to-exposure of the target bug within the campaign budget differ between the two seed
+    corpora?
+\end{description}
+
+Together, the research questions establish whether the gains observed in
+the seed generation study translate into an end-to-end fuzzing campaign,
+and whether they hold on subjects that played no part in selecting the
+configuration.
+
+\subsection{Subjects}\label{sec:eval:fuzzing:subjects}
+This study uses all twelve subjects introduced in
+\autoref{sec:eval:subjects}. Six are the subjects on which the
+configuration was selected in \autoref{sec:eval:seedgen}; the remaining
+six played no part in that selection and serve to expose any overfitting
+of the configuration to the selection set. We mark this split in every
+per-subject table and plot, so that it remains visible whether an
+observed effect is confined to the subjects that informed the
+configuration.
+
+Aggregate figures and statistical tests are computed over the full set of
+twelve; the split is not treated as a factor. On four of the six held-out
+subjects neither corpus exposed the bug within the budget, leaving too
+few informative subjects for a separate comparison.
+
+\subsection{Procedure}\label{sec:eval:fuzzing:procedure}
+Each subject is fuzzed under two arms: seeded with the project's
+original corpus, and seeded with the LLM-augmented corpus produced by
+the configuration selected in \autoref{sec:eval:seedgen}. Corpus
+construction is performed once per subject, so the only source of
+randomness within an arm is the fuzzing campaign itself. We do not
+include a compute-matched control that grants the original corpus
+additional fuzzing time equal to the generation wall-clock; this is out
+of scope here and is carried to \autoref{sec:threats}.
+
+We use a campaign budget of \SI{8}{\hour}, the longest campaign that
+still fits an overnight CI/CD
+run~\cite{kloosterEffectivenessScalabilityFuzzing2022}. This is shorter
+than the \SI{24}{\hour} convention common in fuzzer
+evaluations~\cite{kleesEvaluatingFuzzTesting2018}, and the trade-off runs
+in a direction that favours the technique under test: a short budget
+rewards seeds that pay off early, which is precisely what per-commit regression targeted corpus
+augmentation is designed to produce. We report this explicitly rather
+than treating \SI{8}{\hour} as neutral, and revisit it in
+\autoref{sec:threats}.
+
+Every arm is run for ten independent campaigns per subject, each with a
+distinct fuzzer seed and no state shared between runs. A campaign counts
+as a reproduction only when the crash matches the target regression:
+BugOSS supplies the bug-revealing input together with the bug and fix
+locations, and we confirm a match against the sanitiser report and
+faulting location rather than counting arbitrary crashes.
+
+Campaigns that reach the budget without reproducing the bug have no
+\ac{TTE}. We treat these as right-censored at \SI{8}{\hour} rather than
+discarding them or imputing a value, following Magma, which applies
+survival analysis to fuzzing campaigns in order to handle the
+measurements left missing by trials in which a fuzzer never reaches the
+bug~\cite{hazimehMagmaGroundTruthFuzzing2020}. Each subject and arm is
+summarised by the \ac{RMST} at the \SI{8}{\hour} horizon: the average
+time for which the bug survives undetected over a campaign capped at
+\SI{8}{\hour}, computed as the area under the Kaplan--Meier estimate.
+\ac{RMST} is defined for every subject, including those where fewer than
+half the campaigns reproduce the bug and the median \ac{TTE} does not
+exist. All reported \ac{RMST} values are relative to the \SI{8}{\hour}
+budget and are not comparable to figures obtained under a different
+horizon.
+
+\paragraph{Unit of analysis.}
+Campaigns are not pooled across subjects. Corpus construction is
+performed once per subject, so the ten campaigns within a subject are
+repeated measurements of one constructed corpus rather than independent
+samples of the technique, and the subject is the unit of analysis for
+every cross-subject statement. Within a subject the ten campaigns are
+independent and are compared directly. \ac{RMST} is the primary outcome
+of this study; the reproduction rate is the endpoint of the same survival
+curve and is reported as a reliability view of it rather than as
+stand-alone evidence.
+
+\paragraph{Reproduction rate.}
+Reproduction rates are reported per subject as the fraction of campaigns
+exposing the bug, together with the mean rate per arm. Within a subject
+the evidence is a $2\times2$ table of campaigns, which we test with
+Fisher's exact test, adjusted with Holm's step-down procedure over the
+twelve subjects. Across subjects we take one paired difference per
+subject and test it with an exact two-sided sign test. A campaign's
+outcome is a single bit, so a subject's difference is a gap between two
+proportions out of ten and only its direction is safe to use; a
+rank-based test would treat a one-campaign gap as commensurable with a
+nine-campaign gap. The accompanying effect size is the Hodges--Lehmann
+estimate of the median paired difference across subjects.
+
+\paragraph{Time to exposure.}
+Within each subject we compare the two arms' Kaplan--Meier curves with a
+two-sided log-rank test over the censored campaign times, again adjusted
+with Holm's procedure over the subjects for which a test is defined. We
+report permutation $p$-values obtained from \num{100000} arm-label
+shuffles rather than the asymptotic $\chi^2$ approximation, which ten
+campaigns per arm do not justify. On four subjects neither arm exposed
+the bug in any campaign; the two curves are then identical, no hazard
+ratio exists, and we report no test rather than a $p$ of \num{1.00},
+which would read as evidence of equivalence. Across subjects we take the
+per-subject difference in \ac{RMST} and test these paired differences
+with an exact Wilcoxon signed-rank test, reporting the Hodges--Lehmann
+estimate of the median paired difference as the effect size in hours.
+
+\paragraph{Why the within-subject test is not a rank test over campaign
+times.}
+Klees et al.\ recommend the Mann--Whitney U test for comparing fuzzing
+configurations~\cite{kleesEvaluatingFuzzTesting2018}. We depart from that
+recommendation within subjects because of the observation window. A
+campaign that had not exposed the bug when the \SI{8}{\hour} window
+closed yields a lower bound on its exposure time, not a measurement, and
+a rank test consumes the numbers it is given and therefore reads that
+bound as an exposure \emph{at} the window. The resulting error is a bias
+rather than a loss of power, and it is largest where the data are
+thinnest: for \emph{readstat}, where one campaign of twenty exposed the
+bug at all, Mann--Whitney returns $p = \num{0.368}$ while a log-rank on
+the same campaigns returns $p = \num{1.000}$ --- correctly, since a
+single exposure cannot separate two survival curves. The log-rank
+consumes $(\text{time},\ \text{event})$ pairs instead, so a censored
+campaign contributes to the risk set at every instant before the window
+and to the exposures at none. The cross-subject test is unaffected by
+this argument and remains a Wilcoxon signed-rank test: its inputs are the
+per-subject \ac{RMST} values, which already account for the censoring.
+
+\paragraph{Assumptions.}
+No distributional form is assumed for the time to exposure. The log-rank
+statistic depends on the event times only through their order within the
+pooled risk sets, its $p$-value is obtained by permuting arm labels
+rather than from an asymptotic approximation, and the reported effect is
+a difference in \ac{RMST}, a functional of the Kaplan--Meier estimator.
+Censoring is administrative at the common \SI{8}{\hour} window and is
+therefore independent of the search process by construction.
+Proportional hazards is not required for the validity of the test and is
+not assumed; no pooled hazard ratio is reported. The cross-subject tests
+are reported for consistency with the comparisons made elsewhere in this
+evaluation, but they have little power at twelve subjects: subjects whose
+difference is exactly zero are dropped as ties, and with the numbers of
+non-tied subjects observed here neither test could have reached
+$\alpha = \num{0.05}$ unless nearly every remaining subject agreed in
+direction. We return to this in \autoref{sec:threats}.
+
+
+\subsection{Results}
+\begin{figure}[p]
+  \centering
+  \includegraphics[width=\textwidth]{figures/bug-survival-curves.pdf}
+  \caption[Bug Survival Curves]{%
+    Kaplan--Meier estimate bug survival curves, one tile per project, with error bands.
+  \label{fig:bug_survival_curves}
+  }
+\end{figure}
+
+\Cref{fig:bug_survival_curves} summarises the campaign outcomes as
+subject-level Kaplan--Meier curves over the \SI{8}{\hour} horizon, one
+panel per subject with a separate curve per arm. Higher curves mean the
+bug survived longer, and steep drops mark reproductions. The four
+held-out subjects that yielded no exposure at all remain flat at
+\num{1.0} across the horizon, while \emph{yara}'s augmented arm starts at
+\num{0.0} because its corpus already contained a bug-exposing input
+before fuzzing began. Numeric summaries derived from these curves are
+reported alongside each research question below.
+
+\begin{table}[t]
+  \centering
+  \begin{threeparttable}
+    \begin{tabular}{@{}lrrrr@{}}
+      \toprule
+       & \multicolumn{2}{c}{Reproduction rate} & \multicolumn{2}{c}{Augmented vs.\ original} \\
+      \cmidrule(lr){2-3} \cmidrule(l){4-5}
+      Project & Augmented & Original & $\Delta$ & $p_{Holm}$ \\
+      \midrule
+      \addlinespace[2pt]
+      \multicolumn{5}{@{}l}{\textsc{Tuning set}\ \textnormal{(6 projects)}} \\
+      \addlinespace[1pt]
+      \hspace{1em}curl & 1.00 & 1.00 & \phantom{$+$}.00 & 1.00 \\
+      \hspace{1em}libhtp & .40 & .50 & $-$.10 & 1.00 \\
+      \hspace{1em}libxml2 & 1.00 & 1.00 & \phantom{$+$}.00 & 1.00 \\
+      \hspace{1em}pcapplusplus & 1.00 & .90 & $+$.10 & 1.00 \\
+      \hspace{1em}readstat & .00 & .10 & $-$.10 & 1.00 \\
+      \hspace{1em}zstd & 1.00 & 1.00 & \phantom{$+$}.00 & 1.00 \\
+      \addlinespace[6pt]
+      \multicolumn{5}{@{}l}{\textsc{Held-out set}\ \textnormal{(6 projects)}} \\
+      \addlinespace[1pt]
+      \hspace{1em}harfbuzz & .00 & .00 & \phantom{$+$}.00 & 1.00 \\
+      \hspace{1em}ndpi & .00 & .00 & \phantom{$+$}.00 & 1.00 \\
+      \hspace{1em}openssl & .30 & .20 & $+$.10 & 1.00 \\
+      \hspace{1em}poppler & .00 & .00 & \phantom{$+$}.00 & 1.00 \\
+      \hspace{1em}usrsctp & .00 & .00 & \phantom{$+$}.00 & 1.00 \\
+      \hspace{1em}yara & 1.00 & .10 & $+$.90 & \textbf{.001} \\
+      \midrule
+      \addlinespace[2pt]
+      \multicolumn{5}{@{}l}{\textsc{Pooled}\ \textnormal{(12 projects)}} \\
+      \addlinespace[1pt]
+       & \multicolumn{2}{c}{Mean rate} & $\hat{\Delta}_{\mathrm{HL}}$\tnote{a} & $p$\tnote{b} \\
+      \cmidrule(lr){2-3} \cmidrule(l){4-5}
+      \hspace{1em}Sign test {\footnotesize (3 wins, 7 ties, 2 losses)} & .48 & .40 & \phantom{$+$}.00 & 1.00 \\
+      \bottomrule
+    \end{tabular}
+    \begin{tablenotes}[flushleft]\footnotesize
+      \item[] Bold $p$: significant at $\alpha = .05$. Within a project the test is Fisher's exact, and the project rows are Holm-adjusted over the 12 of them; the pooled row is not, being one pre-registered test rather than 12 looks at one question.
+      \item[a] Hodges--Lehmann estimate of the median paired difference across projects.
+      \item[b] Exact two-sided sign test over one paired difference per project. The counts beside the row are the projects where the augmented corpus reproduced the bug more often, as often, and less often.
+    \end{tablenotes}
+    \caption{Reproduction of the regression per project, augmented vs.\ original starting corpus. A campaign either reproduced the bug or it did not, so a project's rate is the share of its 10 fuzzing campaigns that did, and its evidence is a 2$\times$2 table of campaigns. $\Delta$ is augmented minus original; positive values favour augmentation. Only the 12 projects with a reading on both sides enter the pooled rows. Every campaign is read over the same first 8\,h, so a crash first seen later is not credited.}\label{tab:bugeval-reproduction}
+  \end{threeparttable}
+\end{table}
+
+
+\begin{tcolorbox}[colback=black!4, colframe=black!40, boxrule=0.4pt,
+                  left=6pt, right=6pt, top=6pt, bottom=6pt]
+\researchq{2.1} Across the twelve subjects the augmented corpus reproduced
+the regression more often in three, less often in two, and equally often
+in seven (\qty{48}{\percent} vs.\ \qty{40}{\percent} of campaigns
+overall). The median paired difference is zero and the difference is not
+significant ($p = \num{1.00}$).
+\end{tcolorbox}
+
+Per-subject reproduction rates are reported in
+\cref{tab:bugeval-reproduction}. Only \emph{yara} separates the arms
+within a subject after Holm adjustment ($p = \num{0.001}$): its augmented
+corpus exposed the bug in all ten campaigns, against one of ten for the
+original corpus. The remaining differences are one campaign wide ---
+\emph{pcapplusplus} \num{1.00} vs.\ \num{0.90}, \emph{openssl} \num{0.30}
+vs.\ \num{0.20}, \emph{libhtp} \num{0.40} vs.\ \num{0.50},
+\emph{readstat} \num{0.00} vs.\ \num{0.10} --- and none is significant.
+
+The seven tied subjects are tied for two opposite reasons, and the
+distinction matters for the rest of this section. Four
+(\emph{harfbuzz}, \emph{ndpi}, \emph{poppler}, \emph{usrsctp}) produced
+no exposure in either arm, so the measure has nothing to separate. The
+other three (\emph{curl}, \emph{libxml2}, \emph{zstd}) reproduced the bug
+in \emph{every} campaign of \emph{both} arms, so the reproduction rate is
+saturated at \num{1.00} and cannot express a difference that exists. As
+\cref{tab:bugeval-rmst} shows, all three of these subjects separate
+clearly on time to exposure. The reproduction rate is therefore reported
+here as a reliability view of the survival curve rather than as the
+efficiency measure, and \ac{RMST} is the primary outcome.
+
+\begin{tcolorbox}[colback=black!4, colframe=black!40, boxrule=0.4pt,
+                  left=6pt, right=6pt, top=6pt, bottom=6pt]
+\researchq{2.2} Generalization to the held-out subjects remains
+inconclusive: on four of the six neither corpus exposed the bug within
+the budget, leaving two informative subjects, one of which reflects a
+corpus that already contained a bug-exposing input before fuzzing began.
+\end{tcolorbox}
+
+Of the six held-out subjects, \emph{harfbuzz}, \emph{ndpi},
+\emph{poppler} and \emph{usrsctp} produced no reproduction in either arm
+across all twenty campaigns, so neither the reproduction rate nor the
+time to exposure can distinguish the corpora there. The two remaining
+subjects are \emph{yara} and \emph{openssl}. \emph{Yara}'s effect is the
+largest in the study but does not measure fuzzing at all: the augmented
+corpus contained an input that crashed the target before the first
+campaign second, so the comparison records corpus construction rather
+than search. Setting it aside leaves \emph{openssl}, whose advantage is
+one campaign in ten and not significant ($p = \num{1.00}$). No claim
+about generalization is supported in either direction by this evidence.
+
+\begin{tcolorbox}[colback=black!4, colframe=black!40, boxrule=0.4pt,
+                  left=6pt, right=6pt, top=6pt, bottom=6pt]
+\researchq{2.3} Across the twelve subjects the augmented corpus reduced
+\ac{RMST} in five, increased it in three, and left it unchanged in four,
+with a median paired difference of \qty{40}{\minute} during fuzzing
+execution and \emph{none} once the augmentation overhead is charged to
+each campaign (neither significant, $p = \num{0.148}$ and
+$p = \num{0.641}$). The per-subject effects differ in sign: three
+subjects improved significantly and one degraded significantly.
+\end{tcolorbox}
+
+
+\newcommand{\grp}[2]{\multicolumn{6}{@{}l}{\textsc{#1}\ \textnormal{(#2)}}}
+\newcommand{\sub}[1]{\hspace{1em}#1}
+\begin{table}[t]
+  \centering
+  \begin{threeparttable}
+    \begin{tabular}{@{}lrrrr@{}}
+      \toprule
+       & \multicolumn{2}{c}{$RMST_{8h}$ (h:mm:ss)} & \multicolumn{2}{c}{Augmented vs.\ original} \\
+      \cmidrule(lr){2-3} \cmidrule(l){4-5}
+      Project & Augmented & Original & $\Delta$ & $p_{Holm}$\tnote{a} \\
+      \midrule
+      \addlinespace[2pt]
+      \multicolumn{5}{@{}l}{\textsc{Tuning set}\ \textnormal{(6 projects)}} \\
+      \addlinespace[1pt]
+      \hspace{1em}curl & 1:45:23 & 0:14:37 & $+$1:30:45 & \textbf{.005} \\
+      \hspace{1em}libhtp & 5:38:41 & 5:02:05 & $+$0:36:35 & 1.00 \\
+      \hspace{1em}libxml2 & 0:47:38 & 3:50:03 & $-$3:02:25 & \textbf{.005} \\
+      \hspace{1em}pcapplusplus & 0:41:20 & 2:19:10 & $-$1:37:50 & .467 \\
+      \hspace{1em}readstat & 8:00:00\tnote{b} & 7:34:40 & $+$0:25:19 & 1.00 \\
+      \hspace{1em}zstd & 0:46:09 & 3:30:58 & $-$2:44:49 & \textbf{.028} \\
+      \addlinespace[6pt]
+      \multicolumn{5}{@{}l}{\textsc{Held-out set}\ \textnormal{(6 projects)}} \\
+      \addlinespace[1pt]
+      \hspace{1em}harfbuzz & 8:00:00\tnote{b} & 8:00:00\tnote{b} & \phantom{$+$}0:00:00 & -- \\
+      \hspace{1em}ndpi & 8:00:00\tnote{b} & 8:00:00\tnote{b} & \phantom{$+$}0:00:00 & -- \\
+      \hspace{1em}openssl & 6:23:57 & 7:07:38 & $-$0:43:40 & 1.00 \\
+      \hspace{1em}poppler & 8:00:00\tnote{b} & 8:00:00\tnote{b} & \phantom{$+$}0:00:00 & -- \\
+      \hspace{1em}usrsctp & 8:00:00\tnote{b} & 8:00:00\tnote{b} & \phantom{$+$}0:00:00 & -- \\
+      \hspace{1em}yara & 0:00:00\tnote{b} & 7:59:50 & $-$7:59:50 & \textbf{$<$.001} \\
+      \midrule
+      \addlinespace[2pt]
+      \multicolumn{5}{@{}l}{\textsc{Pooled}\ \textnormal{(12 projects)}} \\
+      \addlinespace[1pt]
+       & \multicolumn{2}{c}{Mean RMST (h:mm:ss)} & $\hat{\Delta}_{\mathrm{HL}}$\tnote{c} & $p$\tnote{d} \\
+      \cmidrule(lr){2-3} \cmidrule(l){4-5}
+      \hspace{1em}Fuzzing only {\footnotesize (5 wins, 4 ties, 3 losses)} & 4:40:15 & 5:48:15 & $-$0:40:21 & .148 \\
+      \hspace{1em}With overhead {\footnotesize (4 wins, 4 ties, 4 losses)} & 5:27:07 & 5:48:15 & \phantom{$+$}0:00:00 & .641 \\
+      \bottomrule
+    \end{tabular}
+    \begin{tablenotes}[flushleft]\footnotesize
+      \item[] Bold $p$: significant at $\alpha = .05$. The project rows are Holm-adjusted over the 8 projects a test could be computed for; the pooled rows are not, being one pre-registered test each rather than 8 looks at one question. ``--'': not testable, neither arm exposed the bug in any campaign, so the two curves are identical and no hazard ratio exists to test. This is not a finding of no difference.
+      \item[a] Two-sided log-rank test over that project's campaigns, comparing the two arms' Kaplan--Meier curves. Unlike a rank test over the campaign times, it reads a campaign that reached the horizon without an exposure as the lower bound it is rather than as an exposure at the horizon. $p$ is a permutation p-value over 100,000 arm-label shuffles, ten campaigns a side being too few for the $\chi^2$ approximation.
+      \item[b] Identical in all 10 campaigns of that arm (no within-arm variability).
+      \item[c] Hodges--Lehmann estimate of the median paired difference across projects, the location the signed-rank test estimates.
+      \item[d] Exact two-sided Wilcoxon signed-rank over one paired difference per project. The counts beside each row are the projects where the augmented corpus exposed the bug sooner, at the same time, and later; the projects that tie are dropped by the test, which leaves few enough pairs that its smallest attainable $p$ is well above $.05$ unless every remaining project agrees in direction.
+    \end{tablenotes}
+    \caption{Time to exposure per project, augmented vs.\ original starting corpus. RMST is the restricted mean survival time over an 8\,h horizon, the area under that arm's Kaplan-Meier curve up to the horizon, so a campaign that never exposed the bug is censored there rather than dropped; estimated from 10 fuzzing campaigns per arm. $\Delta$ is augmented minus original; negative values favour augmentation. The pooled \emph{with overhead} row charges the augmentation pipeline's wall-clock cost (Table~\ref{tab:bugeval-overhead}) to every augmented campaign before the horizon is applied, so a campaign whose exposure falls outside it once its corpus is paid for is censored there; only the 12 projects with a reading on both sides enter the pooled rows.}\label{tab:bugeval-rmst}
+  \end{threeparttable}
+\end{table}
+
+
+\Cref{tab:bugeval-rmst} reports \ac{RMST} per subject and arm. Four
+subjects separate after Holm adjustment. Three favour augmentation ---
+\emph{yara} ($\Delta = -7{:}59{:}50$, $p < \num{0.001}$), \emph{libxml2}
+($-3{:}02{:}25$, $p = \num{0.005}$) and \emph{zstd} ($-2{:}44{:}49$,
+$p = \num{0.028}$) --- and one favours the original corpus:
+\emph{curl} exposed the bug \qty{1}{\hour}\,\qty{31}{\minute} later under
+augmentation ($p = \num{0.005}$). Of the remaining subjects,
+\emph{pcapplusplus} ($-1{:}37{:}50$) and \emph{openssl} ($-0{:}43{:}40$)
+favour augmentation and \emph{libhtp} ($+0{:}36{:}35$) and
+\emph{readstat} ($+0{:}25{:}19$) the original, none significantly, and
+four admit no test because neither arm ever exposed the bug.
+
+Charging the augmentation pipeline's wall-clock cost
+(\cref{tab:bugeval-overhead}) to every augmented campaign before the
+horizon is applied moves the split from five--four--three to
+four--four--four and the median paired difference from
+\qty{40}{\minute} to zero. Because a campaign whose exposure falls
+outside the window once its corpus is paid for is censored at the window
+rather than credited with a later time, this accounting is if anything
+generous to the augmented arm; the overhead-adjusted comparison should
+not be read as augmentation becoming faster.
+
+\subsection{Discussion}
+
+\paragraph{The effect is real in places and absent or reversed in others.}
+The augmented corpus was faster on five subjects and slower on three, and
+in four of the eight subjects where a test is possible, the difference is
+large enough to survive correction --- in one of them against
+augmentation. This is not a uniform improvement with noise around it; it
+is a set of subject-specific outcomes that differ in sign. The pooled
+median of \qty{40}{\minute} describes the middle of that spread and
+should not be read as an expected saving on a new target.
+
+\paragraph{Reliability saturates where efficiency does not.}
+On \emph{curl}, \emph{libxml2} and \emph{zstd} both corpora reproduced
+the bug in all ten campaigns, so \rq{2.1} records no difference at all,
+while the same subjects show \ac{RMST} differences between
+\qty{1.5}{\hour} and \qty{3}{\hour} in \rq{2.3}. Where a bug is reachable
+from either corpus, what augmentation changes is how quickly it is
+reached, not whether it is reached. A study that measured only detection
+rates at this budget would have reported no effect on precisely the
+subjects where the effect is clearest.
+
+\begin{figure}[p]
+  \centering
+  \includegraphics[width=\textwidth]{figures/coverage-rmst-bubble.pdf}
+  \caption[]{Affected Coverage gained versus change in time-to-exposure, per project}
+  \label{fig:aug_overhead}
+\end{figure}
+
+\paragraph{Added coverage does not predict added benefit.}
+Augmentation increased affected-line coverage across all twelve subjects by between \qty{0.6}{pp} and \qty{52.9}{pp}, yet the magnitude of that gain does not correlate with the magnitude of the speed-up. \Cref{fig:coverage-rmst-bubble} plots the two against each other, one bubble per project: the horizontal axis is the coverage the augmentation added over the corpus it started from (log-scaled, since the gains span two orders of magnitude), and the vertical axis is $\Delta\mathrm{RMST}$ over the \qty{8}{\hour} window --- the augmented arm's restricted mean survival time minus the original arm's --- so a project below the dashed line is one whose campaigns exposed the regression sooner once seeded with the augmented corpus. Bubble area encodes the corpus's \emph{total} affected coverage, marker shape the experiment set (circles tuning, squares held-out), and a hollow marker a project where neither arm reproduced the bug inside the window: its $\Delta\mathrm{RMST}$ is a difference of two censorings rather than a measured gap, and the four such projects are excluded from the correlation. Across the remaining eight the gain and the change in exposure time are essentially unrelated (Spearman $\rho = +\num{0.19}$, $p = \num{0.651}$, $n = \num{8}$): the two subjects that gained the most coverage, \emph{pcapplusplus} and \emph{ndpi}, sit almost exactly on the zero line, while the largest movement, \emph{yara}'s, followed a merely mid-range gain of \qty{9.1}{pp}. Whatever produced the occasional speed-up was not the quantity the augmentation optimizes for.
+
+\paragraph{One result measures corpus construction, not fuzzing.}
+\emph{Yara} is the largest effect in the study and the one that should carry the
+least weight. Its augmented corpus already contained an input that crashed the
+target before fuzzing started, so the \ac{RMST} of \num{0},seconds recorded for
+it reflects how the corpus was built, not how the fuzzer searched. That input
+was not a mutation of an existing seed. The agent had read the code change
+that introduced the bug, and it produced a file that specifically exercised a
+rarely used corner of the input format --- one for which that change had just
+added new parsing code. None of the seeds in the original corpus used that part
+of the format, so fuzzing from them would have had to construct the structure
+from scratch before it could reach the new code at all. The result therefore
+measures the agent acting on the diff, not the fuzzer benefiting from a
+better starting point. It is kept in the tables because dropping a favorable
+result after seeing it would bias the summary, but every claim about fuzzing
+efficiency in this section holds without it, and \rq{2.2} is evaluated with it
+set aside.
+
+\paragraph{The largest loss is a corpus-construction effect too, not a search effect.}
+\emph{Curl} is the one subject where the augmented corpus was slower by a margin
+that survives correction, taking roughly an hour and a half longer to expose the
+regression. The reason is visible in the corpus itself. This bug is reached only
+along one particular interaction: the program has to follow a redirect from one
+address to a second address and then re-encode that second address, and the
+fault is in the re-encoding. An input that already performs that interaction is
+most of the way to the bug, since the fuzzer only has to disturb the redirect
+address; an input that does not has to build the interaction up by mutation
+first. The original corpus contained many inputs that follow a redirect ---
+roughly one in forty of its several thousand entries. The pipeline does not fuzz
+from that corpus: it first reduces it to a small set chosen to cover the changed
+code, then adds generated inputs. The reduction step cut the redirect-following
+inputs from over a hundred to one, and the generator restored only about fifteen,
+because producing a complete and valid interaction of this kind is far harder
+than producing an input that merely reaches the changed lines once. The resulting
+corpus covers the changed code better than the original did, yet leaves campaigns
+far fewer starting points on the path to the bug, and their exposure times show
+it: instead of the original's tight band around ten to fifteen minutes, the
+augmented campaigns ranged from under two minutes to more than five hours.
+
+\begin{figure}[p]
+  \centering
+  \includegraphics[width=\textwidth]{figures/augmentation-overhead.pdf}
+  \caption[Time Overhead of the Augmentation Pipeline]{Time Overhead of the Augmentation Pipeline}
+  \label{fig:aug_overhead}
+\end{figure}
+
+\paragraph{Charged with its overhead, augmentation breaks even.}
+Once the pipeline's own wall-clock cost is charged to each campaign, the median
+paired difference falls to zero, and the split becomes even: at an \SI{8}{\hour}
+budget, augmentation still buys time on some subjects, but on others, producing the
+corpus costs about as much as the corpus saves. For most subjects, this cost is
+modest. As depicted in \cref{fig:aug_overhead}, the median project spends \SI{78.5}{\minute} on corpus construction, about
+\(16\%\) of the budget, and nine of the twelve stay below \SI{1.5}{\hour}. The
+largest share of this is the LLM augmentation itself, which is bounded by the cycle
+and token budget and takes between \SI{30}{\minute} and \SI{75}{\minute} on every
+project. The remaining cost sits in a tail of three projects, curl, openssl and
+poppler, whose overhead exceeds \SI{3}{\hour}. There, CoI computation and
+distillation take \SIrange{2.4}{3.6}{\hour}, between \(74\%\) and \(88\%\) of each
+project's overhead, and these three projects account for \(77\%\) of the time spent
+on the two stages across all subjects.
+
+Distillation in particular leaves substantial room for optimization. Our
+implementation invokes \texttt{llvm-cov} once per seed and exports a separate
+coverage report to disk before selecting the corpus that maximizes affected-code
+coverage; retaining the coverage counters in memory and processing them directly
+would remove the repeated report generation, serialization and file I/O. By
+comparison, \texttt{afl-cmin}, which minimizes a corpus by edge coverage collected
+through a fork server, never takes more than \SI{9.5}{\minute} on the full corpus in
+our experiments, whereas our distillation exceeds it in 10 of the 12 projects, despite
+processing only the seeds \texttt{afl-cmin} retains, and takes more than
+\SI{1}{\hour} on curl, openssl and poppler.
+
+\paragraph{What the sample can and cannot support.}
+Overall, the results demonstrate that LLM-based corpus augmentation can substantially affect regression exposure time, but its benefit is target-dependent and not consistently positive. Across subjects, the observed reduction in \ac{RMST} is neither statistically significant nor robust to accounting for augmentation overhead. Moreover, increased affected-code coverage does not predict faster exposure, indicating that coverage of changed affected code alone is insufficient to explain the observed effects. The results therefore support augmentation as a potential target-specific optimization, but do not establish a general end-to-end advantage over the original corpus.
+
+\section{Threats to Validity}\label{sec:eval:threats}
+% Internal: baseline configuration for OFAT; additivity assumption;
+% no compute-matched control; LLM nondeterminism and model drift.
+% External: 12 subjects, C/C++ only(?), one fuzzer, one model.
+% Construct: reachability as a proxy for bug-finding; 8h budget.
+
+% Internal: the one-factor-at-a-time design does not observe interaction
+% between starting corpus and \ac{CoI} scope. A configuration that is best
+% on each factor in isolation need not be best jointly; the reported
+% recommendation is therefore a local rather than a global optimum over
+% the 3x2 space. [Sequential version: the effect of \ac{CoI} scope is
+% characterised only at the selected starting corpus.]
+
+\section{Summary}

@@ -1,0 +1,294 @@
+% ===========================================================================
+%  pipeline.tex -- Artifact flow of the solution pipeline
+%
+%  Required in the preamble of your thesis:
+%      \usepackage{graphicx}   % for \resizebox
+%      \usepackage{tikz}
+%      \usetikzlibrary{arrows.meta,positioning,shapes.geometric,fit,backgrounds,calc}
+%
+%  Pull it into a chapter with:   \input{figures/pipeline}
+%  (Use \input, not \include: \include forces a \clearpage and cannot be
+%   nested inside another included file such as a chapter.)
+%
+%  The icons are drawn with plain TikZ, so no icon-font package is needed.
+%  Everything below is local to the figure; nothing leaks into your document.
+% ===========================================================================
+\begin{figure}[p]
+  \centering
+  % ---------------------------------------------------------- icon library --
+  \tikzset{
+    icl/.style={line width=0.55pt, line cap=round, line join=round},
+    % --- file with code chevrons
+    pics/ic code/.style={code={
+      \draw[icl] (-0.24,-0.32) -- (-0.24,0.32) -- (0.08,0.32) -- (0.24,0.16) -- (0.24,-0.32) -- cycle;
+      \draw[icl] (0.08,0.32) -- (0.08,0.16) -- (0.24,0.16);
+      \draw[icl] (-0.13,0.02) -- (-0.18,-0.06) -- (-0.13,-0.14);
+      \draw[icl] (0.05,0.02) -- (0.10,-0.06) -- (0.05,-0.14);
+    }},
+    % --- diff: file with + and - lines
+    pics/ic diff/.style={code={
+      \draw[icl] (-0.24,-0.32) -- (-0.24,0.32) -- (0.08,0.32) -- (0.24,0.16) -- (0.24,-0.32) -- cycle;
+      \draw[icl] (0.08,0.32) -- (0.08,0.16) -- (0.24,0.16);
+      \draw[icl] (-0.16,0.04) -- (0.02,0.04);  \draw[icl] (-0.07,-0.05) -- (-0.07,0.13);
+      \draw[icl] (-0.16,-0.16) -- (0.02,-0.16);
+    }},
+    % --- corpus: stack of seed files
+    pics/ic corpus/.style={code={
+      \draw[icl] (-0.30,0.06) rectangle (0.10,0.34);
+      \draw[icl,fill=white] (-0.20,-0.06) rectangle (0.20,0.22);
+      \draw[icl,fill=white] (-0.10,-0.18) rectangle (0.30,0.10);
+      \draw[icl] (-0.02,-0.02) -- (0.22,-0.02); \draw[icl] (-0.02,-0.10) -- (0.16,-0.10);
+    }},
+    % --- gear
+    pics/ic gear/.style={code={
+      \foreach \a in {0,45,...,315}{\draw[icl] (\a:0.18) -- (\a:0.32);}
+      \draw[icl] (0,0) circle (0.19); \draw[icl] (0,0) circle (0.07);
+    }},
+    % --- graph (SVF)
+    pics/ic graph/.style={code={
+      \draw[icl] (-0.26,0.22) -- (0.04,0.06) -- (0.28,0.26);
+      \draw[icl] (0.04,0.06) -- (-0.18,-0.20); \draw[icl] (0.04,0.06) -- (0.24,-0.22);
+      \foreach \p in {(-0.26,0.22),(0.28,0.26),(0.04,0.06),(-0.18,-0.20),(0.24,-0.22)}
+        {\fill \p circle (0.055);}
+    }},
+    % --- cone of influence
+    pics/ic cone/.style={code={
+      \fill (-0.28,0) circle (0.06);
+      \draw[icl] (-0.28,0) -- (0.28,0.26); \draw[icl] (-0.28,0) -- (0.28,-0.26);
+      \draw[icl] (-0.28,0) -- (0.28,0.02);
+      \draw[icl,dashed,dash pattern=on 1pt off 1pt] (0.28,0.26) -- (0.28,-0.26);
+    }},
+    % --- funnel (cmin)
+    pics/ic funnel/.style={code={
+      \draw[icl] (-0.30,0.28) -- (0.30,0.28) -- (0.07,-0.04) -- (0.07,-0.30)
+                 -- (-0.07,-0.30) -- (-0.07,-0.04) -- cycle;
+    }},
+    % --- grid with selected cells (SAT min-cover)
+    pics/ic grid/.style={code={
+      \foreach \x in {0,1,2}{\foreach \y in {0,1,2}{
+        \draw[icl] (-0.30+\x*0.20,-0.30+\y*0.20) rectangle (-0.14+\x*0.20,-0.14+\y*0.20);}}
+      \fill (-0.30,0.10) rectangle (-0.14,0.26);
+      \fill (-0.10,-0.30) rectangle (0.06,-0.14);
+      \fill (0.10,-0.10) rectangle (0.26,0.06);
+    }},
+    % --- robot (LLM agent)
+    pics/ic robot/.style={code={
+      \draw[icl] (0,0.34) -- (0,0.22); \fill (0,0.36) circle (0.04);
+      \draw[icl,rounded corners=0.06cm] (-0.26,-0.20) rectangle (0.26,0.22);
+      \fill (-0.12,0.04) circle (0.05); \fill (0.12,0.04) circle (0.05);
+      \draw[icl] (-0.10,-0.10) -- (0.10,-0.10);
+    }},
+    % --- annotated source file
+    pics/ic annot/.style={code={
+      \draw[icl] (-0.24,-0.32) -- (-0.24,0.32) -- (0.08,0.32) -- (0.24,0.16) -- (0.24,-0.32) -- cycle;
+      \draw[icl] (0.08,0.32) -- (0.08,0.16) -- (0.24,0.16);
+      \fill[black!25] (-0.17,0.00) rectangle (0.17,0.08);
+      \fill[black!25] (-0.17,-0.20) rectangle (0.10,-0.12);
+      \draw[icl] (-0.17,0.04) -- (0.17,0.04); \draw[icl] (-0.17,-0.16) -- (0.10,-0.16);
+      \draw[icl] (-0.17,-0.06) -- (0.05,-0.06);
+    }},
+    % --- terminal / script
+    pics/ic term/.style={code={
+      \draw[icl,rounded corners=0.05cm] (-0.30,-0.24) rectangle (0.30,0.26);
+      \draw[icl] (-0.30,0.14) -- (0.30,0.14);
+      \draw[icl] (-0.18,0.02) -- (-0.08,-0.05) -- (-0.18,-0.12);
+      \draw[icl] (-0.02,-0.12) -- (0.16,-0.12);
+    }},
+    % --- chip (instrumented binary)
+    pics/ic chip/.style={code={
+      \draw[icl] (-0.20,-0.20) rectangle (0.20,0.20);
+      \draw[icl] (-0.08,-0.08) rectangle (0.08,0.08);
+      \foreach \d in {-0.12,0,0.12}{
+        \draw[icl] (\d,0.20) -- (\d,0.30); \draw[icl] (\d,-0.20) -- (\d,-0.30);
+        \draw[icl] (0.20,\d) -- (0.30,\d); \draw[icl] (-0.20,\d) -- (-0.30,\d);}
+    }},
+    % --- bug (fuzzing)
+    pics/ic bug/.style={code={
+      \draw[icl] (0,0.02) ellipse (0.17 and 0.24);
+      \draw[icl] (0,0.30) circle (0.09);
+      \draw[icl] (-0.05,0.37) -- (-0.12,0.46); \draw[icl] (0.05,0.37) -- (0.12,0.46);
+      \foreach \y in {0.14,0.0,-0.14}{
+        \draw[icl] (-0.16,\y) -- (-0.32,\y+0.06); \draw[icl] (0.16,\y) -- (0.32,\y+0.06);}
+    }},
+    % --- magnifier (inspect)
+    pics/ic glass/.style={code={
+      \draw[icl] (0.02,0.08) circle (0.20); \draw[icl] (-0.12,-0.06) -- (-0.30,-0.26);
+    }},
+    % --- pencil (write)
+    pics/ic pencil/.style={code={
+      \draw[icl] (-0.30,-0.26) -- (-0.24,-0.10) -- (0.22,0.34) -- (0.32,0.24) -- (-0.14,-0.20) -- cycle;
+      \draw[icl] (-0.24,-0.10) -- (-0.14,-0.20);
+    }},
+    % --- play (execute)
+    pics/ic play/.style={code={
+      \draw[icl] (-0.16,-0.26) -- (-0.16,0.26) -- (0.28,0) -- cycle;
+    }},
+  }
+  % \ic[colour]{icon}: icon typeset on its own line, sitting on the baseline
+  \newcommand{\ic}[2][black!65]{\tikz[baseline=-0.30cm]{\pic[scale=0.82,color=#1]{#2};}}
+  \newcommand{\cA}{blue!55!black}     % operations
+  \newcommand{\cC}{orange!70!black}   % corpus
+  \newcommand{\cD}{black!55}          % other artifacts
+  \newcommand{\cG}{violet!60!black}   % agent
+  \newcommand{\cT}{teal!55!black}     % tools
+  % --------------------------------------------------------------- figure ---
+  % Remove the \resizebox (here and before \caption) for the natural size.
+  \resizebox{\textwidth}{!}{%
+  \begin{tikzpicture}[
+      font   = \sffamily\footnotesize,
+      >      = {Stealth[round]},
+      box/.style   = {draw, align=center, inner sep=3pt, minimum height=11mm,
+                      text width=32mm, rounded corners=2pt},
+      art/.style   = {box, fill=black!4,   draw=black!45},
+      corp/.style  = {box, fill=orange!14, draw=orange!70!black, line width=1pt,
+                      text width=36mm},
+      op/.style    = {box, fill=blue!7,    draw=blue!55},
+      agent/.style = {box, fill=violet!14, draw=violet!60!black, line width=1pt},
+      harness/.style= {box, fill=teal!9, draw=teal!55!black},
+      % ---- edges
+      flow/.style     = {->, draw=black!60, line width=0.7pt},
+      lane/.style     = {draw=black!60, line width=0.7pt},
+      corpflow/.style = {->, draw=orange!70!black, line width=1.5pt},
+      skip/.style     = {->, draw=orange!70!black, line width=1pt, dashed},
+      tool/.style     = {->, draw=teal!55!black, line width=0.8pt,
+                         dash pattern=on 2pt off 1.6pt},
+      % ---- labels
+      el/.style = {font=\sffamily\scriptsize, inner sep=1.5pt, fill=white, text=black!70},
+      tl/.style = {el, text=teal!45!black, align=center},
+      grp/.style= {draw=black!45, dashed, rounded corners=4pt, inner sep=4.5mm},
+      gl/.style = {font=\sffamily\footnotesize\bfseries, inner sep=2pt,
+                   fill=white, text=black!70, anchor=west},
+      badge/.style = {circle, draw=teal!55!black, fill=teal!12, text=teal!40!black,
+                      inner sep=0.4pt, minimum size=3.4mm,
+                      font=\sffamily\tiny\bfseries},
+    ]
+
+    % ===================================================== inputs ============
+    \node[art]  (src) at (-5.2,0) {\ic[\cD]{ic code}\\[0.6mm]sources @ commit};
+    \node[corp] (c0)  at ( 0  ,0) {\ic[\cC]{ic corpus}\\[0.6mm]$C_0$: reference corpus};
+    \node[art]  (dif) at ( 5.2,0) {\ic[\cD]{ic diff}\\[0.6mm]changed lines};
+
+    % ===================================================== step 1a / 1b ======
+    \node[op]  (o1a) at (-5.2,-1.9) {\ic[\cA]{ic gear}\\[0.6mm]instrument \& build};
+    \node[art] (bin) at (-5.2,-3.4) {\ic[\cD]{ic chip}\\[0.6mm]instrumented binary};
+
+    \node[op]  (svf) at ( 5.2,-1.9) {\ic[\cA]{ic graph}\\[0.6mm]SVF graph};
+    \node[op]  (coi) at ( 5.2,-3.4) {\ic[\cA]{ic cone}\\[0.6mm]CoI slice};
+    \node[art] (aff) at ( 5.2,-4.9) {\ic[\cD]{ic annot}\\[0.6mm]affected lines};
+
+    % ===================================================== step 2 ============
+    \node[op]   (cmin) at (0,-6.4)  {\ic[\cA]{ic funnel}\\[0.6mm]\texttt{cmin}};
+    \node[corp] (c1)   at (0,-7.9)  {\ic[\cC]{ic corpus}\\[0.6mm]$C_1$: coverage-minimal};
+    \node[op]   (sat)  at (0,-9.4)  {\ic[\cA]{ic grid}\\[0.6mm]SAT min-cover};
+    \node[corp] (c2)   at (0,-10.9) {\ic[\cC]{ic corpus}\\[0.6mm]$C_2$: distilled};
+
+    % ===================================================== step 3 ============
+    \node[agent, text width=34mm]   (llm) at (4.8,-13.1) {\ic[\cG]{ic robot}\\[0.6mm]LLM agent, cycle $k$};
+    \node[art, text width=34mm]     (gen) at (4.8,-15.1) {\ic[\cD]{ic term}\\[0.6mm]seed generator\\(Python)};
+    \node[harness, text width=34mm] (gcr) at (4.8,-17.1) {\ic[\cT]{ic play}\\[0.6mm]\texttt{gain\_coverage\_report}};
+    \node[art, text width=34mm]     (rep) at (4.8,-19.3) {\ic[\cD]{ic annot}\\[0.6mm]annotated sources,\\updated on disk};
+    \node[corp]  (ck)  at (0,-17.1) {\ic[\cC]{ic corpus}\\[0.6mm]$C_k$: working corpus};
+
+    \node[corp] (c3)   at (0,-21.5) {\ic[\cC]{ic corpus}\\[0.6mm]$C^{*}$: augmented};
+    \node[op]   (fuzz) at (0,-23.2) {\ic[\cA]{ic bug}\\[0.6mm]fuzzing campaign};
+
+    % ===================================================== artifact edges ====
+    \draw[flow] (src) -- (o1a);
+    \draw[flow] (o1a) -- (bin);
+    \draw[flow] (dif) -- (svf);
+    \draw[flow] (svf) -- (coi);
+    \draw[flow] (coi) -- (aff);
+
+    % ---- the corpus spine
+    \draw[corpflow] (c0)   -- (cmin);
+    \draw[corpflow] (cmin) -- (c1);
+    \draw[corpflow] (c1)   -- (sat);
+    \draw[corpflow] (sat)  -- (c2);
+    \draw[corpflow] (c2)   -- (ck);
+    \draw[corpflow] (ck)   -- (c3);
+    \draw[corpflow] (c3)   -- (fuzz);
+
+    % ---- binary lane (left) with taps
+    \draw[lane] (bin.south) -- (-5.2,-23.2);
+    \draw[flow] (-5.2,-6.4)  -- (cmin.west) node[el, pos=0.42] {coverage};
+    \draw[flow] (-5.2,-17.1) -- (ck.west)   node[el, pos=0.42] {target binary};
+    \draw[flow] (-5.2,-23.2) -- (fuzz.west) node[el, pos=0.42] {target};
+    \foreach \y in {-6.4,-17.1} {\fill[black!60] (-5.2,\y) circle (1.1pt);}
+
+    % ---- affected-lines lane (right) with taps
+    \draw[lane] (aff.south) -- (5.2,-11.3) -| (8.1,-17.1);
+    \draw[flow] (5.2,-9.4)  -- (sat.east) node[el, pos=0.42] {affected lines};
+    \draw[flow] (8.1,-17.1) -- (gcr.east) node[el, pos=0.45, above] {markers};
+    \fill[black!60] (5.2,-9.4) circle (1.1pt);
+
+    % ---- optional step may be skipped
+    \draw[skip] (c0.west) -- ++(-0.9,0) |- (c2.west);
+    \node[el, text=orange!65!black, rotate=90] at (-2.6,-5.4) {distill skipped};
+
+    % ===================================================== agent cycle =======
+    % (1) the agent inspects the corpus ...
+    \draw[tool] (ck.north east) |- (llm.west) node[badge, pos=0.55] {1};
+    \node[tl, rotate=90] at (1.3,-15.1)
+      {\texttt{hexdump}, \texttt{strings},\\\texttt{grep}, \texttt{read}};
+
+    % ... explores the annotated sources on disk ...
+    \draw[tool] (rep.east) -- (9.0,-19.3) -- (9.0,-13.72) node[badge, pos=0.45] {1}
+                -- (llm.south east);
+    \node[tl, rotate=90] at (9.45,-16.3)
+      {\texttt{grep}, \texttt{ls}, \texttt{glob}, \texttt{read}};
+
+    % ... and writes the seed generator -- all in any order
+    \draw[tool] (llm) -- (gen)
+                node[badge, pos=0.5] {1}
+                node[tl, pos=0.5, right=5mm] {\texttt{write}};
+
+    % (2) a single harness call with two effects
+    \draw[tool] (gen) -- (gcr) node[badge, pos=0.5] {2};
+    % 2.1 run the generator, adding its seeds to the corpus
+    \draw[flow] ([yshift=3mm]gcr.west) -- ([yshift=3mm]ck.east);
+    \node[tl, anchor=west] at (1.95,-16.1) {2.1 generate seeds};
+    % 2.2 execute the enlarged corpus on the instrumented target
+    \draw[flow] ([yshift=-3mm]ck.east) -- ([yshift=-3mm]gcr.west);
+    \node[tl, anchor=west] at (1.95,-18.05) {2.2 execute on target};
+    % 2.3 refresh the annotations on disk
+    \draw[flow] (gcr) -- (rep)
+                node[tl, midway, right=3mm] {2.3 update annotated code};
+    % 2.4 return the report to the agent
+    \draw[tool] (gcr.north east) -- (7.2,-16.48) -- (7.2,-13.1) -- (llm.east);
+    \node[tl, rotate=90] at (6.85,-14.6) {2.4 report};
+
+    % ===================================================== groups ============
+    \begin{scope}[on background layer]
+      \node[grp, fit=(src)(o1a)(bin)]      (g1a) {};
+      \node[grp, fit=(dif)(svf)(coi)(aff)] (g1b) {};
+      \node[grp, fit=(cmin)(c1)(sat)(c2)]  (g2)  {};
+      \node[grp, draw=violet!55!black,
+            fit={(llm)(gen)(gcr)(rep)(ck)(9.7,-15)}] (g3) {};
+    \end{scope}
+
+    \node[gl] at ([xshift=5mm]g1a.north west) {Compile (1a)};
+    \node[gl] at ([xshift=5mm]g1b.north west) {Taint analysis (1b)};
+    \node[gl] at ([xshift=3mm]g2.north west)  {Distill (2)};
+    \node[gl, text=violet!60!black] at ([xshift=25mm]g3.north west) {Augment (3)};
+    \node[el, text=violet!60!black, anchor=north east, align=right]
+      at ([yshift=-1.5mm]g3.south east)
+      {(1) inspect and write, in any order and repeatedly\\
+       $\to$ (2) one \texttt{gain\_coverage\_report} call ends the cycle:\\
+       2.1 generate $\to$ 2.2 execute $\to$ 2.3 annotate $\to$ 2.4 report\\
+       repeat until token budget or cycle limit is reached};
+    \node[gl] at ([xshift=4mm]fuzz.east) {Fuzz (4)};
+
+    % ===================================================== legend ============
+    \node[anchor=north west, align=left, font=\sffamily\scriptsize, text=black!65]
+      at (3.6,-22.2)
+      {\tikz{\draw[->,draw=orange!70!black,line width=1.5pt](0,0)--(0.7,0);}~corpus\\[0.6mm]
+       \tikz{\draw[->,draw=black!60,line width=0.7pt](0,0)--(0.7,0);}~other artifact\\[0.6mm]
+       \tikz{\draw[->,draw=teal!55!black,line width=0.8pt,%
+             dash pattern=on 2pt off 1.6pt](0,0)--(0.7,0);}~agent tool call};
+
+  \end{tikzpicture}%
+  }
+  \caption[Artifact flow of the solution pipeline]{Artifact flow of the
+    solution pipeline.}
+  \label{fig:solution-pipeline}
+\end{figure}

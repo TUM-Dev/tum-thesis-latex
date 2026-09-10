@@ -1,0 +1,193 @@
+% !TeX root = ../main.tex
+% figures/agent_loop.tex  --  included via \input{figures/agent_loop.tex}
+%
+% Required in the preamble (already needed by figures/pipeline.tex):
+%   \usepackage{tikz}
+%   \usetikzlibrary{arrows.meta,positioning,calc}
+%
+% Drawing area: x from -0.6 to 13.8 (about 14.4cm), y from -5.9 to 3.4.
+
+\definecolor{alcorpus}{HTML}{D97706} % corpus spine (orange), match pipeline.tex
+\definecolor{alagent}{HTML}{2563EB}  % agent / LLM
+\definecolor{altool}{HTML}{475569}   % tooling and infrastructure
+
+\begin{figure}[htbp]
+  \centering
+  \begin{tikzpicture}[
+      >={Latex[length=2.2mm,width=1.6mm]},
+      font=\footnotesize,
+      %% ---------------- icons (TikZ native, no external fonts) --------- %%
+      pics/folder/.style={code={
+        \filldraw[draw=#1,fill=#1!14,line width=0.5pt,line join=round]
+          (-0.21,-0.16) -- (-0.21,0.15) -- (-0.05,0.15) -- (0.00,0.09)
+          -- (0.21,0.09) -- (0.21,-0.16) -- cycle;
+        \draw[#1,line width=0.4pt] (-0.21,0.09) -- (0.00,0.09);}},
+      pics/doc/.style={code={
+        \filldraw[draw=#1,fill=#1!10,line width=0.5pt,line join=round]
+          (-0.14,-0.19) -- (-0.14,0.19) -- (0.05,0.19) -- (0.14,0.10)
+          -- (0.14,-0.19) -- cycle;
+        \draw[#1,line width=0.4pt] (0.05,0.19) -- (0.05,0.10) -- (0.14,0.10);
+        \draw[#1!75,line width=0.35pt]
+          (-0.08,0.03) -- (0.08,0.03) (-0.08,-0.04) -- (0.08,-0.04)
+          (-0.08,-0.11) -- (0.03,-0.11);}},
+      pics/chip/.style={code={
+        \foreach \y in {-0.08,0.00,0.08} {
+          \draw[#1,line width=0.5pt] (-0.16,\y) -- (-0.23,\y);
+          \draw[#1,line width=0.5pt] (0.16,\y) -- (0.23,\y);}
+        \foreach \x in {-0.08,0.00,0.08} {
+          \draw[#1,line width=0.5pt] (\x,0.16) -- (\x,0.23);
+          \draw[#1,line width=0.5pt] (\x,-0.16) -- (\x,-0.23);}
+        \filldraw[draw=#1,fill=#1!14,line width=0.6pt,rounded corners=1pt]
+          (-0.16,-0.16) rectangle (0.16,0.16);
+        \draw[#1,line width=0.5pt,rounded corners=0.5pt]
+          (-0.07,-0.07) rectangle (0.07,0.07);}},
+      pics/gear/.style={code={
+        \foreach \a in {0,45,...,315} {
+          \filldraw[draw=#1,fill=#1!20,line width=0.4pt]
+            (\a-9:0.10) -- (\a-7:0.19) -- (\a+7:0.19) -- (\a+9:0.10) -- cycle;}
+        \filldraw[draw=#1,fill=#1!14,line width=0.5pt] (0,0) circle (0.125);
+        \filldraw[draw=#1,fill=white,line width=0.4pt] (0,0) circle (0.05);}},
+      %% ---------------- boxes ------------------------------------------ %%
+      container/.style={
+        draw=altool!50, dashed, rounded corners=3pt, line width=0.5pt},
+      ctitle/.style={font=\footnotesize\bfseries, text=altool},
+      artifact/.style={
+        draw=altool!60, fill=altool!6, rounded corners=2pt, line width=0.5pt,
+        minimum width=4.2cm, inner sep=0pt},
+      corpusartifact/.style={
+        artifact, draw=alcorpus, fill=alcorpus!10, line width=0.7pt},
+      alabel/.style={anchor=west, align=left, text width=3.3cm, inner sep=0pt},
+      legendbox/.style={
+        draw=altool!35, fill=white, rounded corners=2pt, line width=0.4pt,
+        minimum width=4.2cm, minimum height=0.80cm, text width=3.9cm,
+        align=center, inner sep=1pt, font=\scriptsize},
+      agentbox/.style={
+        draw=alagent, fill=alagent!8, rounded corners=3pt, line width=0.8pt,
+        minimum width=6.0cm, minimum height=1.70cm, inner sep=0pt},
+      finalbox/.style={
+        draw=alcorpus, fill=alcorpus!22, rounded corners=2pt, line width=0.8pt,
+        minimum width=4.2cm, minimum height=1.15cm, text width=3.8cm,
+        align=center, inner sep=2pt},
+      substep/.style={
+        draw=altool!60, fill=white, rounded corners=2pt, line width=0.5pt,
+        minimum width=6.8cm, minimum height=0.95cm, text width=6.5cm,
+        align=left, inner sep=3pt, font=\scriptsize},
+      flow/.style={->, draw=altool, line width=0.7pt},
+      corpusflow/.style={->, draw=alcorpus, line width=1.0pt},
+      lbl/.style={font=\scriptsize, text=altool, inner sep=1.5pt},
+      corpuslbl/.style={lbl, text=alcorpus},
+    ]
+
+    %% ---------------------------------------------------------------- %%
+    %% Workspace  (container 0.5 .. 5.4  /  -2.95 .. 2.65)
+    %% ---------------------------------------------------------------- %%
+    \draw[container] (0.5,-2.95) rectangle (5.4,2.65);
+    \node[ctitle] at (2.95,2.35) {Workspace};
+
+    \node[artifact,minimum height=0.90cm] (script) at (2.95,1.55) {};
+    \pic at (1.25,1.55) {doc=altool};
+    \node[alabel] at (1.65,1.55)
+      {\ttfamily seed\_gen\_\\ \ttfamily cycle\_N.py};
+
+    \node[artifact,minimum height=1.00cm] (src) at (2.95,0.35) {};
+    \pic at (1.25,0.35) {folder=altool};
+    \node[alabel] at (1.65,0.35)
+      {\ttfamily src/\\[1pt] \scriptsize annotated + harness};
+
+    \node[legendbox] (legend) at (2.95,-0.80)
+      {{\ttfamily[A]} affected \quad {\ttfamily[C]} covered\\
+       {\ttfamily[P]} partial \quad\ {\ttfamily[.]} uncovered};
+
+    \node[corpusartifact,minimum height=1.05cm] (corpus) at (2.95,-2.05) {};
+    \pic at (1.25,-2.05) {folder=alcorpus};
+    \node[alabel] at (1.65,-2.05)
+      {\ttfamily corpus/\\[1pt] \scriptsize reference + generated};
+
+    \node[finalbox] (final) at (2.95,-4.05) {$C^{*}$\\[1pt]\scriptsize starting
+      corpus of the campaign};
+
+    %% ---------------------------------------------------------------- %%
+    %% Agent  (box 7.2 .. 13.2  /  0.75 .. 2.45)
+    %% ---------------------------------------------------------------- %%
+    \node[agentbox] (agent) at (10.2,1.60) {};
+    \pic at (7.85,1.60) {chip=alagent};
+    \node[align=center,text width=4.5cm] at (10.55,1.60)
+      {\textbf{Agent (LLM)}\\[3pt]
+       {\scriptsize\ttfamily ls\ \ glob\ \ grep\ \ read\_file\\
+        write\_file\ \ hexdump\\
+        strings\ \ file\_type}};
+
+    %% ---------------------------------------------------------------- %%
+    %% Coverage feedback tool  (container 6.6 .. 13.8  /  -5.85 .. -0.7)
+    %% ---------------------------------------------------------------- %%
+    \draw[container] (6.6,-5.85) rectangle (13.8,-0.7);
+    \pic at (7.15,-1.05) {gear=altool};
+    \node[ctitle,anchor=west] at (7.45,-1.05)
+      {\ttfamily gain\_coverage\_report\_tool};
+
+    \node[substep] (s1) at (10.2,-1.95)
+      {\textbf{[2.1]} run \texttt{seed\_gen\_cycle\_N.py} $\rightarrow$\\
+       validate: error, timeout, file count, file size};
+    \node[substep] (s2) at (10.2,-3.05)
+      {\textbf{[2.2]} new seeds $\rightarrow$ \texttt{corpus/} (persistent)};
+    \node[substep] (s3) at (10.2,-4.15)
+      {\textbf{[2.3]} \texttt{corpus/} $\rightarrow$ instrumented binary
+       $\rightarrow$\\ coverage $\cap$ affected slice};
+    \node[substep] (s4) at (10.2,-5.25)
+      {\textbf{[2.4]} update annotation;\\ emit coverage delta};
+
+    %% ---------------------------------------------------------------- %%
+    %% Inputs
+    %% ---------------------------------------------------------------- %%
+    \draw[corpusflow] (-0.55,3.30) -- (-0.55,-2.05) -- (corpus.west);
+    \node[corpuslbl,anchor=west] at (-0.40,3.08)
+      {distilled corpus \textbf{[2]}};
+
+    \draw[flow] (10.2,3.30) -- (agent.north);
+    \node[lbl,anchor=west,align=left,text width=3.2cm] at (10.35,2.95)
+      {initial prompt +\\ coverage summary};
+
+    %% ---------------------------------------------------------------- %%
+    %% Loop edges: workspace <-> agent
+    %% ---------------------------------------------------------------- %%
+    \draw[flow] (5.40,1.00) -- node[lbl,below,pos=0.5]{inspect} (7.20,1.20);
+    \draw[flow] (7.20,1.90) -- node[lbl,above,pos=0.5]{write} (script.east);
+
+    %% ---------------------------------------------------------------- %%
+    %% Loop edges: agent <-> tool
+    %% ---------------------------------------------------------------- %%
+    \draw[flow] (12.40,0.75) -- (12.40,-0.70);
+    \node[lbl,anchor=west] at (12.53,0.02) {call};
+    \draw[flow] (8.55,-0.70) -- (8.55,0.75);
+    \node[lbl,anchor=west] at (8.68,0.02) {coverage delta};
+
+    %% ---------------------------------------------------------------- %%
+    %% Loop edges: tool -> workspace (shared lane at x = 6.0)
+    %% ---------------------------------------------------------------- %%
+    \draw[flow] (6.60,-1.34) -- (6.00,-1.34) -- (6.00,0.35) -- (src.east);
+    \node[lbl,rotate=90] at (5.70,-0.50) {annotate};
+
+    \draw[corpusflow] (6.60,-3.05) -- (6.00,-3.05) -- (6.00,-2.05)
+      -- (corpus.east);
+    \node[corpuslbl,rotate=90] at (5.70,-2.55) {add seeds};
+
+    %% ---------------------------------------------------------------- %%
+    %% Output
+    %% ---------------------------------------------------------------- %%
+    \draw[corpusflow] (corpus.south) -- (final.north);
+    \node[lbl,anchor=west] at (3.15,-3.20) {budget exhausted};
+
+  \end{tikzpicture}
+  \caption[Corpus-augmentation loop of the LLM agent]{%
+    Iterative corpus-augmentation loop. The distilled corpus enters the
+    workspace as \texttt{corpus/}, which serves as both reference and working
+    corpus; the agent is started with the initial prompt and the initial
+    coverage summary. It inspects the workspace with read-only tools, writes a
+    new generator script per cycle, and ends the cycle by calling
+    \texttt{gain\_coverage\_report\_tool}, which executes the script, adds the
+    generated seeds to \texttt{corpus/}, re-measures commit-affected coverage,
+    updates the annotation, and returns a coverage delta as the sole feedback
+    signal. Once the budget is exhausted, \texttt{corpus/} is the augmented
+    corpus $C^{*}$.}
+  \label{fig:agent-loop}
+\end{figure}

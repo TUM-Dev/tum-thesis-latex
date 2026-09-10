@@ -1,0 +1,327 @@
+\chapter{Related Work}
+\label{chapter:related-work}
+
+This chapter reviews existing approaches to improving the effectiveness of
+fuzzing for regression testing, with a particular focus on seed selection and
+generation. We first examine traditional regression fuzzing techniques that
+adapt the fuzzing process to prioritize changed or affected code, followed by
+approaches for selecting, reusing, and generating seed corpora. We then review
+recent LLM-driven seed-generation techniques and distinguish them by their scope
+of targeting and their integration with the fuzzing process. Finally, we
+synthesize these approaches into a comparative taxonomy and identify the
+research gap our work addresses.
+
+\section{Traditional Regression Fuzzing}
+\label{sec:rw-regression-fuzzing}
+
+Regression fuzzing aims to accelerate the discovery of bugs introduced by recent
+code changes by prioritizing the exploration of commit-related program regions.
+Existing approaches have predominantly pursued this goal by adapting the fuzzing
+engine through target-aware instrumentation, guidance mechanisms, and scheduling
+strategies.
+
+The seminal work in this area is AFLGO~\cite{bohmeDirectedGreyboxFuzzing2017},
+which introduced \ac{DGF}. AFLGO instruments the target binary with distance
+metrics derived from the control flow graph and uses a simulated annealing power
+schedule to prioritize seeds that execute closer to specified target locations.
+This established the foundation for commit-aware fuzzing by steering execution
+toward modified code.
+
+Subsequent work has focused on reducing the overhead of directed fuzzing to
+better suit Continuous Integration (CI/CD) environments.
+CIDFuzz~\cite{zhangCIDFuzzFuzzTesting2023} uses differential analysis to
+identify change points and dynamically allocate fuzzing resources, while
+Pazzer~\cite{sharmaEffectiveFuzzingCI2024a} replaces expensive intra-procedural
+CFG analysis with incremental call-graph construction. Similarly,
+SelectFuzz~\cite{luoSelectFuzzEfficientDirected2023} reduces runtime overhead by
+instrumenting only data- and control-dependent paths relevant to the target.
+
+While early \ac{DGF} approaches targeted only modified lines, later work
+recognized that regression bugs frequently manifest in code indirectly affected
+by a commit. WAFLGO~\cite{xiangCriticalCodeGuided2024} therefore extends the
+target scope beyond the immediate code diff by incorporating transitively
+affected program regions calculated via data-flow dependency analysis into its
+guidance strategy. 
+
+Overall, traditional regression fuzzing has primarily focused on adapting the
+fuzzing engine through target-aware analysis, instrumentation, and execution
+guidance. Since our work addresses the same objective of accelerating regression
+bug discovery in commit-affected code, these approaches provide the relevant
+regression-fuzzing context for our work. Unlike these methods, however, we
+investigate ways to improve the initial seed corpus rather than modify the
+fuzzing process itself.
+
+\section{Corpus Selection, Reuse, and Augmentation}
+\label{sec:rw-corpus}
+
+The quality of the initial seed corpus substantially influences fuzzing
+effectiveness, which is particularly relevant under the limited execution
+budgets of CI/CD environments. Empirical studies have shown that seed selection
+can significantly affect fuzzing
+performance~\cite{herreraSeedSelectionSuccessful2021}, while corpus distillation
+can reduce redundant inputs and improve the efficiency of subsequent
+fuzzing~\cite{herreraCorpusDistillationEffective2020}.
+
+Consequently, prior work has investigated the reuse and selection of inputs from
+existing fuzzing campaigns. Continuous fuzzing approaches retain and select
+corpora across campaigns, including selection based on functional
+coverage~\cite{yooImprovingConfigurabilityUnitlevel2021,kimBugOssBenchmarkRealworld2024}.
+Other approaches select seeds based on their relevance to a particular target,
+for example, by using distance to the target
+location~\cite{canakciTargetFuzzUsingDARTs2022}. More recent work further
+explores the use of historical fuzzing results to improve the seed corpus for
+subsequent campaigns~\cite{liImprovingSeedQuality2025}.
+
+These approaches motivate treating the corpus as a persistent artifact rather
+than reconstructing it for every campaign. Our approach therefore retains the
+existing corpus and augments it with newly generated seeds targeting code
+affected by the current commit. This combines previously acquired program
+coverage with commit-specific inputs while allowing the resulting corpus to be
+used by an otherwise unmodified fuzzer.
+
+\section{Traditional Seed Generation}
+\label{sec:rw-traditional-generation}
+
+While regression fuzzing has historically focused on modifying execution
+guidance and scheduling within the fuzzing engine, parallel research has
+investigated how to create a high-quality initial seed corpus to give the
+fuzzing engine a substantial head start.
+
+Early input seed generation relied heavily on manual, domain-specific generation
+scripts, such as Domato~\cite{GoogleprojectzeroDomato2026} and
+Freedom~\cite{xuFREEDOMEngineeringStateoftheArt2020a} for HTML files. To
+minimize manual engineering, subsequent work leveraged formal grammar and format
+specifications. Tools like
+FormatFuzzer~\cite{dutraFormatFuzzerEffectiveFuzzing2023} compile binary format
+specifications into executable generators and mutators, whereas frameworks such
+as Fandango~\cite{zamudioamayaFANDANGOEvolvingLanguageBased2025,
+bettscheiderCombiningInputConstraints2026} synthesize inputs during fuzzing by
+enforcing grammar constraints aligned with execution goals.
+
+To eliminate the need for manual grammar specification, deep learning approaches
+introduced data-driven seed synthesis by training machine learning models
+directly on existing valid seed corpora. Early probabilistic models like
+Skyfire~\cite{wangSkyfireDataDrivenSeed2017} learned input distributions to
+generate seeds for complex parsers, while
+LearnAndFuzz~\cite{godefroidLearnFuzzMachineLearning2017} utilized Recurrent
+Neural Networks for sequence-based input synthesis. Subsequent work, such as
+Smartseed~\cite{lyuSmartSeedSmartSeed2019}, employed Generative Adversarial
+Networks to generate structurally valid seed files.
+
+Despite their effectiveness, traditional generation techniques remain
+constrained: grammar-based methods require substantial domain expertise to
+formalize specifications, while classical ML approaches struggle to generalize
+to unseen program semantics without extensive retraining data. These limitations
+paved the way for \ac{LLM} approaches capable of zero-shot semantic reasoning
+across diverse codebases.
+
+\section{LLM-Driven Seed Generation}
+\label{sec:rw-llm-generation}
+
+Recent research has increasingly adopted Large Language Models and autonomous
+agents to overcome the generality bottlenecks of traditional seed generation. We
+categorize them by their \emph{targeting scope and context awareness}: broad, non-targeted approaches; single-point-targeted approaches; and commit-derived, multi-point-targeted regression approaches.
+
+\subsection{Broad- and Non-Targeted Approaches}
+\label{subsec:rw-broad}
+
+Broad \ac{LLM} approaches leverage generative models to maximize overall program
+coverage or to synthesize syntactically valid inputs without focusing on a
+specific vulnerability or code diff.
+
+Early efforts, such as OSS-Fuzz
+Gen~\cite{OssfuzzgenLlm_toolkitCorpus_generatorpy}, used one-shot prompting,
+providing the model with project descriptions and highly relevant source code
+snippets to synthesize initial corpus files. Building upon this,
+SeedMind~\cite{shiHarnessingLargeLanguage2024} employs a more structured
+methodology, traversing the Dynamic Call Graph in a breadth-first manner and
+utilizing coverage-guided feedback to iteratively prompt the \ac{LLM} to write
+and refine seed-generation scripts to maximize overall code coverage.
+
+Other techniques integrate \ac{LLM} generation directly into the dynamic fuzzing
+loop rather than focusing solely on the initial corpus.
+G2Fuzz~\cite{EnablingLowCostComprehensive} generates initial seeds by tasking
+the \ac{LLM} to write Python scripts that, in turn, create specific input
+formats (like PDFs). Another \ac{LLM} is then dynamically activated to generate
+mutation-like candidate inputs when the underlying fuzzer becomes locally stuck.
+Similarly, Fuzz4All~\cite{xiaFuzz4AllUniversalFuzzing2024} processes
+human-provided documentation and code snippets to generate initial seeds using
+an auto-prompting technique, then scores them based on input validity. The
+prompt is then forwarded to the main fuzzing loop, where the \ac{LLM}
+continuously alternates between input generation, mutation, and semantic
+equivalence transformation. Fuzz4All operates without a dynamic feedback
+mechanism, terminating either when a crash is detected or when its computational
+budget expires.
+
+\subsection{Single-Point-Targeted Approaches}
+\label{subsec:rw-point-targeted}
+
+Recognizing that broad generation often fails to reach deep or complex program
+logic, a substantial line of work steers \acp{LLM} toward a single known
+location, typically a reported vulnerability. These approaches differ mainly in
+how much context they assemble and how the generated inputs are consumed.
+
+ISC4DGF~\cite{xuISC4DGFEnhancingDirected2024} supplies the model with project
+metadata, driver source, CVE descriptions, and patch diffs, and synthesizes
+Python generation scripts whose outputs seed a subsequent fuzzing campaign.
+HGFuzzer~\cite{xuDirectedGreyboxFuzzing2025} extends this to an all-in-one
+solution that additionally generates harnesses and infers execution conditions
+via a secondary model instance.
+
+SeedSmith~\cite{zhuSeedSmithLLMDrivenSeed2026} replaces static context assembly
+with an agent that actively queries the codebase for function bodies,
+caller--callee relationships, and type definitions, refining its generation
+scripts against execution feedback before handing the corpus to a fuzzer.
+RandLuzz~\cite{fengFuzzingRandomnessReasoning2025} goes further still, building a
+knowledge base from CVE summaries and bug reports, synthesizing inputs that step
+along the call chain toward the target, and finally producing a specialized
+mutator that operates inside the fuzzing loop.
+
+Although several of these approaches consume patch diffs as context, their
+generation is steered toward a single sink location rather than the change as a
+whole; we therefore classify them as point-targeted. Such methods presuppose
+that the target location is known in advance, which does not hold when a commit
+modifies multiple locations, and the faulty one has not yet been identified.
+
+\subsection{Commit-Derived, Multi-Point-Targeted Approaches}
+\label{subsec:rw-commit-aware}
+
+While point-targeted approaches excel at reaching single static locations,
+regression testing requires evaluating distributed changes spread across an
+entire commit. The primary approach addressing this setting is
+Cleverest~\cite{liuEvaluatingLLMBasedRegression}.
+
+Cleverest passes the raw commit diff together with a project description to an
+\ac{LLM} and tasks it with generating an input that triggers a bug introduced by
+the commit. Each candidate is executed, and the outcome, whether the changed
+code was reached, whether the program output differed, and whether a bug was
+triggered, is recorded in an attempt history that is fed back into the next
+prompt. This loop continues until a bug is found or the budget is exhausted. If
+no bug is triggered directly, the inputs accumulated during the process are
+handed to a fuzzer as a starting corpus, giving it a head start toward the bug.
+
+Two aspects of this design bound its scope. Its targets are drawn from the raw
+diff, so code that a change affects only transitively, through data- or
+control-dependent paths, is not represented in the generation context. Its
+corpus is also constructed anew for each commit, so coverage accumulated by
+prior campaigns does not inform the result.
+
+\section{Comparative Taxonomy and Research Gap}
+\label{sec:rw-gap}
+\Cref{tab:fuzzing_taxonomy} summarizes the related work along the dimensions
+introduced above: the targeting scope of generated seeds, whether generation
+completes before the fuzzing campaign or is invoked from within it, whether
+directly changed and transitively affected code are targeted, and whether an
+existing corpus is retained and extended. Two gaps emerge:
+\begin{description}
+  \item[Transitive scope is unused in generation.] The transitive scope of a
+    commit has been recognized on the engine side, but not in seed generation.
+    WAFLGO extends its guidance to code that a change affects through data-flow
+    dependencies, yet no generation-based approach draws on more than the diff
+    itself.
+  \item[Augmentation is absent throughout.] Approaches that generate seeds
+    construct them anew for each campaign, while the work that does treat corpora
+    as persistent artifacts~\cite{herreraSeedSelectionSuccessful2021,
+    yooImprovingConfigurabilityUnitlevel2021, canakciTargetFuzzUsingDARTs2022,
+    liImprovingSeedQuality2025} selects from what already exists rather
+    than generating new inputs for a specific change.
+\end{description}
+
+
+\begin{tcolorbox}[colback=black!4, colframe=black!40, boxrule=0.4pt,
+                  left=6pt, right=6pt, top=6pt, bottom=6pt]
+To the best of our knowledge, no existing approach combines
+\textbf{commit-derived, multi-point-targeted seed generation for affected code}
+with \textbf{augmentation of an existing seed corpus}.
+\end{tcolorbox}
+
+Our approach closes both gaps, and does so relative to Cleverest~\cite{liuEvaluatingLLMBasedRegression}, our
+closest prior work and the only other generation-based approach that targets
+commits. Where Cleverest derives its targets from the raw diff, we derive target
+regions from the \ac{CoI} of the changed statements, capturing code a commit
+affects indirectly through data or control dependencies; inputs for these regions
+are then generated using an LLM. And where Cleverest constructs a corpus from
+scratch, we retain previously acquired seeds together with their coverage
+information and combine them with the commit-specific inputs, so the resulting
+corpus preserves existing coverage while improving coverage of the newly affected
+code.
+
+% The following three commands belong in the preamble.
+\newcommand{\yes}{\ding{51}}
+\newcommand{\no}{\ding{55}}
+\newcommand{\na}{\textendash}
+
+\begin{table}[t]
+\centering
+\footnotesize
+\setlength{\tabcolsep}{5pt}
+\renewcommand{\arraystretch}{1.25}
+\begin{tabularx}{\linewidth}{@{}>{\raggedright\arraybackslash}X
+  >{\centering\arraybackslash}p{0.13\linewidth}
+  *{4}{>{\centering\arraybackslash}p{0.085\linewidth}}@{}}
+\toprule
+\textbf{Approach} & \textbf{Scope} & \textbf{Pre-Fuzz} &
+\textbf{Commit} & \textbf{Affected} & \textbf{Augment} \\
+\midrule
+
+\multicolumn{6}{@{}l}{\itshape Regression fuzzing without seed generation}\\[2pt]
+AFLGo~\cite{bohmeDirectedGreyboxFuzzing2017},
+CIDFuzz~\cite{zhangCIDFuzzFuzzTesting2023},
+Pazzer~\cite{sharmaEffectiveFuzzingCI2024a},
+SelectFuzz~\cite{luoSelectFuzzEfficientDirected2023}
+  & None & \na & \yes & \no  & \no \\
+WAFLGO~\cite{xiangCriticalCodeGuided2024}
+  & None & \na & \yes & \yes & \no \\
+
+\midrule
+\multicolumn{6}{@{}l}{\itshape Seed generation without LLMs}\\[2pt]
+FormatFuzzer~\cite{dutraFormatFuzzerEffectiveFuzzing2023},
+Fandango~\cite{zamudioamayaFANDANGOEvolvingLanguageBased2025,
+bettscheiderCombiningInputConstraints2026}
+  & Broad & \no & \no & \no & \no \\
+Domato~\cite{GoogleprojectzeroDomato2026},
+FREEDOM~\cite{xuFREEDOMEngineeringStateoftheArt2020a},
+Skyfire~\cite{wangSkyfireDataDrivenSeed2017},
+LearnAndFuzz~\cite{godefroidLearnFuzzMachineLearning2017},
+SmartSeed~\cite{lyuSmartSeedSmartSeed2019}
+  & Broad & \yes & \no & \no & \no \\
+
+\midrule
+\multicolumn{6}{@{}l}{\itshape LLM-based seed generation}\\[2pt]
+G2Fuzz~\cite{EnablingLowCostComprehensive},
+Fuzz4All~\cite{xiaFuzz4AllUniversalFuzzing2024}
+  & Broad  & \no  & \no  & \no  & \no \\
+OSS-Fuzz-Gen~\cite{OssfuzzgenLlm_toolkitCorpus_generatorpy},
+SeedMind~\cite{shiHarnessingLargeLanguage2024}
+  & Broad  & \yes & \no  & \no  & \no \\
+ISC4DGF~\cite{xuISC4DGFEnhancingDirected2024},
+HGFuzzer~\cite{xuDirectedGreyboxFuzzing2025},
+RandLuzz~\cite{fengFuzzingRandomnessReasoning2025}
+  & Single & \no  & \no  & \no  & \no \\
+SeedSmith~\cite{zhuSeedSmithLLMDrivenSeed2026}
+  & Single & \yes & \no  & \no  & \no \\
+Cleverest~\cite{liuEvaluatingLLMBasedRegression}
+  & Multi  & \yes & \yes & \no  & \no \\
+
+\midrule
+\textbf{Ours} & \textbf{Multi} & \yes & \yes & \yes & \yes \\
+\bottomrule
+\end{tabularx}
+
+\caption{Taxonomy of fuzzing and seed-generation approaches by covered domain.
+Approaches with identical values across all dimensions are grouped into a single
+row.}
+\label{tab:fuzzing_taxonomy}
+
+\vspace{2pt}
+{\footnotesize
+\textit{Scope} gives the targeting scope of generated seeds.
+\textit{Pre-Fuzz} indicates that generation completes before the campaign and
+therefore imposes no requirements on the fuzzing engine; \no{}~marks approaches
+that invoke the generator from within the fuzzing loop and thus depend on a
+modified or purpose-built fuzzer. \textit{Commit} and \textit{Affected} indicate
+whether directly changed and transitively affected code are targeted.
+\textit{Augment} indicates that the resulting corpus is the prior corpus
+extended with new seeds, rather than one constructed from scratch. \na{}~marks
+the generation-related dimension for approaches that generate no seeds.\par}
+\end{table}

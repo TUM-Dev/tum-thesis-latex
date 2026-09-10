@@ -1,0 +1,67 @@
+% !TeX root = ../main.tex
+% figures/coverage_report.tex  --  included via \input{figures/coverage_report.tex}
+%
+% Required in the preamble:
+%   \usepackage{listings}
+%   \usepackage{xcolor}
+
+\definecolor{rptGain}{HTML}{15803D} % newly covered
+\definecolor{rptLeft}{HTML}{B91C1C} % still uncovered
+\definecolor{rptLoss}{HTML}{475569} % newly uncovered (regression guard)
+\definecolor{rptFade}{HTML}{9CA3AF} % elisions
+
+\newcommand{\rptGainHead}[1]{{\color{rptGain}\bfseries #1}}
+\newcommand{\rptLeftHead}[1]{{\color{rptLeft}\bfseries #1}}
+\newcommand{\rptLossHead}[1]{{\color{rptLoss}\bfseries #1}}
+\newcommand{\rptElide}[1]{{\color{rptFade}\itshape #1}}
+
+\lstdefinestyle{coveragereport}{
+  basicstyle=\fontsize{7}{8.4}\selectfont\ttfamily,
+  columns=fullflexible,
+  keepspaces=true,
+  showstringspaces=false,
+  frame=single,
+  rulecolor=\color{black!20},
+  framesep=5pt,
+  xleftmargin=6pt,
+  aboveskip=2pt,
+  belowskip=2pt,
+  escapeinside={(*}{*)},
+}
+
+\begin{figure}[htbp]
+  \centering
+  \begin{lstlisting}[style=coveragereport]
+(*\rptGainHead{Newly covered affected lines: 5595}*)
+  /src/curl/lib/../lib/sigpipe.h     43, 48, 57, 65, 68-69
+  /src/curl/lib/asyn-thread.c        93, 112, 116-117, 126, (*\rptElide{[...]}*)
+  /src/curl/lib/base64.c             175, 198, 207, 213, 216-219, (*\rptElide{[...]}*)
+  (*\rptElide{[...]}*)
+
+(*\rptLeftHead{Still uncovered affected lines: 11039}*)
+  /src/curl/lib/url.c                808/1336 affected lines uncovered ( 60%)
+  /src/curl/lib/ftp.c                766/1170 affected lines uncovered ( 65%)
+  /src/curl/lib/vtls/openssl.c       679/ 806 affected lines uncovered ( 84%)
+  /src/curl/lib/setopt.c             594/ 683 affected lines uncovered ( 87%)
+  /src/curl/lib/http.c               556/1196 affected lines uncovered ( 46%)
+  /src/curl/lib/multi.c              481/ 868 affected lines uncovered ( 55%)
+  /src/curl/lib/http2.c              450/ 470 affected lines uncovered ( 96%)
+  /src/curl/lib/telnet.c             396/ 396 affected lines uncovered (100%)
+  /src/curl/lib/ftplistparser.c      345/ 349 affected lines uncovered ( 99%)
+  /src/curl/lib/transfer.c           330/ 581 affected lines uncovered ( 57%)
+  (*\rptElide{[...]}*)
+  (*\rptElide{... 42 more files, 488 more uncovered affected lines}*)
+
+(*\rptLossHead{Newly uncovered affected lines: 0}*)
+  \end{lstlisting}
+  \caption[Coverage delta report returned to the agent]{%
+    Coverage delta returned by \texttt{gain\_coverage\_report\_tool} after a
+    cycle, here for cURL. The report is a delta rather than a full coverage
+    dump: it names the affected lines the cycle newly reached, then ranks the
+    files that still contain uncovered affected lines by absolute count, giving
+    the uncovered fraction per file so that the agent can distinguish files it
+    has barely entered from files it has almost exhausted. The trailing count
+    closes the list without enumerating the long tail. Elisions marked
+    \rptElide{[...]} abbreviate the report for presentation.}
+  \label{fig:coverage-report}
+\end{figure}

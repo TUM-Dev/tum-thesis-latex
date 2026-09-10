@@ -11,14 +11,14 @@
 \newcommand*{\getFaculty}{Informatics}
 \newcommand*{\getDegree}{Informatics}
 \newcommand*{\getSchool}{Computation, Information and Technology}
-\newcommand*{\getTitle}{Thesis title}
-\newcommand*{\getTitleGer}{Titel der Abschlussarbeit}
-\newcommand*{\getAuthor}{Author}
-\newcommand*{\getDoctype}{Bachelor's Thesis, Master's Thesis, \ldots}
-\newcommand*{\getSupervisor}{Supervisor}
-\newcommand*{\getAdvisor}{Advisor}
+\newcommand*{\getTitle}{Seed Optimization for Directed Greybox Fuzzing in Commit-Change Testing}
+\newcommand*{\getTitleGer}{Optimierung der Seed-Auswahl für Gerichtetes Greybox-Fuzzing beim Testen von Commit-Änderungen}
+\newcommand*{\getAuthor}{Cevin Neubauer}
+\newcommand*{\getDoctype}{Master's Thesis}
+\newcommand*{\getSupervisor}{Prof. Dr. Alexander Pretschner}
+\newcommand*{\getAdvisor}{Kohei Dozono, M.Sc.}
 \newcommand*{\getKeywords}{keyword;another keyword;one more}
-\newcommand*{\getSubmissionDate}{Submission date}
+\newcommand*{\getSubmissionDate}{07.10.2026}
 \newcommand*{\getSubmissionLocation}{Munich}
 
 % TODO: change citation style in settings
@@ -45,17 +45,28 @@
 \mainmatter{}
 
 \input{chapters/01_introduction}
-% TODO: add more chapters here
+\input{chapters/02_background}
+\input{chapters/03_related_work}
+\input{chapters/04_approach}
+\input{chapters/05_evaluation}
+\input{chapters/06_conclusion}
 
-\appendix{}
+\appendix
+\input{chapters/07_appendix}
 
 \microtypesetup{protrusion=false}
 
 \addchap{Abbreviations}
 \begin{acronym}
 	\itemsep-.25\baselineskip
-	\acro{TUM}[TUM]{Technical University of Munich}
-	% TODO: add acronyms
+	\acro{CoI}[CoI]{Cone of Influence}
+	\acro{SUT}[SUT]{Software Under Test}
+    \acro{TTE}[TTE]{Time to Error}
+    \acro{LLM}[LLM]{Large Language Model}
+    \acro{API}[API]{Application Programming Interface}
+    \acro{DGF}[DGF]{Directed Greybox Fuzzing}
+    \acro{CACC}[CACC]{Commit Affected Code Coverage}
+    \acro{SVF}[SVF]{Static Value-Flow}
 \end{acronym}
 
 \listoffigures{}

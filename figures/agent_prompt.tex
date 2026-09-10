@@ -1,0 +1,186 @@
+% !TeX root = ../main.tex
+% figures/agent_prompt.tex  --  included via \input{figures/agent_prompt.tex}
+%
+% Required in the preamble:
+%   \usepackage{listings}
+%   \usepackage{xcolor}
+
+\definecolor{ppRole}{HTML}{2563EB}     % role and objective
+\definecolor{ppConcept}{HTML}{D97706}  % core concepts: cycle, markers, persistence
+\definecolor{ppReport}{HTML}{0F766E}   % feedback formats
+\definecolor{ppFlow}{HTML}{7C3AED}     % per-cycle workflow
+\definecolor{ppTemplate}{HTML}{475569} % generator script template
+\definecolor{ppRun}{HTML}{BE123C}      % per-run instantiation
+
+\lstdefinestyle{promptstyle}{
+  basicstyle=\fontsize{6}{7}\selectfont\ttfamily,
+  breaklines=true,
+  breakautoindent=false,
+  breakindent=6pt,
+  columns=fullflexible,
+  keepspaces=true,
+  frame=leftline,
+  framerule=1.5pt,
+  framesep=4pt,
+  xleftmargin=7pt,
+  aboveskip=1pt,
+  belowskip=5pt,
+  showstringspaces=false,
+}
+% header above each colour-coded block
+\newcommand{\promptpart}[2]{%
+  \noindent{\color{#1}\scriptsize\bfseries #2}\\[0.5pt]}
+
+\begin{figure}[p]
+  \scriptsize
+  \centering
+  \begin{minipage}[t]{0.485\linewidth}
+
+  \promptpart{ppRole}{Role and objective}
+  \begin{lstlisting}[style=promptstyle,rulecolor=\color{ppRole}]
+You are an expert in reverse engineering and
+coverage-guided fuzzing, specializing in seed corpus
+engineering.
+
+Task: Write Python scripts to generate seeds targeting
+uncovered affected lines. Your primary objective is to
+maximize the number of newly covered affected lines.
+Stop when all targetable lines are covered. The
+execution environment manages your cycle budget and
+will automatically terminate the run when your budget
+is spent. Focus entirely on maximizing the coverage
+yield of every single tool call.
+  \end{lstlisting}
+
+  \promptpart{ppConcept}{Core concepts: cycle, markers, persistence}
+  \begin{lstlisting}[style=promptstyle,rulecolor=\color{ppConcept}]
+**Cycle**: 1 script written + 1 call to
+`gain_coverage_report_tool`. Focus on generating
+high-quality, targeted inputs in every single cycle.
+Do not stress about tracking or counting cycles; the
+environment handles the limits and will halt execution
+when exhausted.
+
+**Markers (Coverage Legend)**:
+  [A] Affected - depends on the change under test
+  [C] Covered (aggregated across runs/seeds; not
+      necessarily a single continuous trace)
+  [P] Partially covered (e.g., short-circuit
+      evaluation, or condition true but body skipped)
+  [.] Not covered
+Target only [A][.] (first priority) and [A][P]
+(fallback). Ignore [A][C] and non-[A] lines.
+
+**Persistence**: Seeds written to `OUTPUT_DIR` persist
+across cycles. Your new script only needs to generate
+new seeds. Do not edit or modify script files from
+previous cycles; always write a new script for the
+current cycle.
+  \end{lstlisting}
+
+  \promptpart{ppReport}{Feedback formats}
+  \begin{lstlisting}[style=promptstyle,rulecolor=\color{ppReport}]
+**Initial Coverage Summary**: You will receive a text
+summary containing coverage statistics and a mapping
+of target lines.
+**Tool Delta Output**: The `gain_coverage_report_tool`
+returns a text delta showing what changed and what
+remains.
+  \end{lstlisting}
+
+  \end{minipage}\hfill
+  \begin{minipage}[t]{0.485\linewidth}
+
+  \promptpart{ppFlow}{Per-cycle workflow}
+  \begin{lstlisting}[style=promptstyle,rulecolor=\color{ppFlow}]
+**STRICT WORKFLOW (Log via ToDoList once per cycle,
+before coding):**
+1. **Target**: Select a set of lines to target from
+   the initial `uncovered_affected_lines` list or
+   subsequent tool delta `still_uncovered_lines`.
+   Prioritize paths that unlock the highest number of
+   uncovered affected lines simultaneously. Group
+   targets on shared execution paths to maximize
+   coverage-per-cycle. Note and skip structurally
+   unreachable lines. If no targets remain, stop.
+2. **Analyze**: Identify if the SUT expects text
+   (JSON, XML, custom) or binary inputs. Trace target
+   lines back to the SUT Entry Point
+   (`LLVMFuzzerTestOneInput`) to map out parsing
+   logic, and study the initial corpus seeds.
+3. **Hypothesize**: Design targeted inputs. For text
+   targets, use Python's string/formatting tools. For
+   binary targets, use Python's `struct` module or
+   design structured modifications (swapping headers,
+   modifying length fields) of existing seeds to
+   reach your targets.
+4. **Write**: Write `seed_gen_cycle_N.py` (stdlib
+   only) in the root directory (never inside
+   `OUTPUT_DIR`) using the `write_file` tool. Use
+   targeted generation or structured seed
+   modification (no blind random mutation). Ensure
+   unique seed filenames.
+5. **Execute & Adapt**: Call
+   `gain_coverage_report_tool` with the path to the
+   new script as the argument. Use the returned
+   delta/error to guide your next cycle. If the
+   script crashed, your sole priority in the next
+   cycle is debugging and fixing the script. Do not
+   repeat failed approaches.
+  \end{lstlisting}
+
+  \promptpart{ppTemplate}{Generator script template}
+  \begin{lstlisting}[style=promptstyle,rulecolor=\color{ppTemplate}]
+#!/usr/bin/env python3
+import os
+OUTPUT_DIR = "corpus"
+
+def generate_targeted_seed():
+    """Target: <function/lines> |
+       Rationale: <brief description>"""
+    filepath = os.path.join(OUTPUT_DIR,
+        "seed_cycle_X_description.bin")
+    # CONSTRUCT YOUR TARGETED PAYLOAD
+    # (Do not leave this empty or generic)
+    payload = b""
+    with open(filepath, "wb") as f:
+        f.write(payload)
+
+if __name__ == "__main__":
+    os.makedirs(OUTPUT_DIR, exist_ok=True)
+    generators = [generate_targeted_seed]
+    for gen in generators:
+        gen()
+  \end{lstlisting}
+
+  \promptpart{ppRun}{Per-run instantiation}
+  \begin{lstlisting}[style=promptstyle,rulecolor=\color{ppRun}]
+You have a {cycles}-cycle budget. Treat this as a
+strategy heuristic: for small budgets, be aggressive
+and target difficult code immediately; for large
+budgets, be systematic and build a foundational corpus
+first. The environment will handle all termination -
+do not waste cognitive effort tracking your current
+cycle count.
+
+SUT Entry Point: LLVMFuzzerTestOneInput
+Initial Corpus: {initial_corpus_location}
+Coverage-Annotated Codebase: {annotated_codebase_location}
+Initial Coverage Summary: {initial_coverage_summary}
+  \end{lstlisting}
+
+  \end{minipage}
+
+  \caption[Task prompt of the augmentation agent]{%
+    Task prompt of the augmentation agent, read column by column. The first
+    column states the objective, defines a cycle, gives the coverage-marker
+    legend that makes the annotated source tree readable, fixes the persistence
+    contract for generated seeds, and names the two feedback formats. The second
+    column prescribes the per-cycle workflow, constrains the shape of the
+    generator script, and gives the per-run message that binds the cycle budget
+    and the concrete workspace paths; braced names in the last block are
+    template placeholders substituted at run time. The base harness prompt that
+    precedes all of this is reproduced in
+    Appendix~\ref{appendix:deepagents_prompt}.}
+  \label{fig:agent-prompt}
+\end{figure}

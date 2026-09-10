@@ -14,19 +14,73 @@
   minnames=3,
   maxbibnames=99,
   giveninits,
-  uniquename=init]{biblatex} % TODO: adapt citation style
+  uniquename=init,
+  style=acmnumeric]{biblatex}
 \usepackage{graphicx}
 \usepackage{scrhack} % necessary for listings package
 \usepackage{listings}
+\usepackage{booktabs}
 \usepackage{lstautogobble}
 \usepackage{tikz}
 \usepackage{pgfplots}
 \usepackage{pgfplotstable}
-\usepackage{booktabs}
+\usepackage{booktabs, threeparttable}
 \usepackage[final]{microtype}
 \usepackage{caption}
 \usepackage[printonlyused]{acronym}
 \usepackage{ifthen}
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{array}
+\usepackage{makecell}
+\usepackage{pifont}
+\usepackage[colorinlistoftodos]{todonotes}
+\usepackage[margin=1in]{geometry}
+\usepackage{siunitx}
+
+
+\usepackage{amsmath}
+
+\usepackage{hyperref}
+\usepackage[capitalise,nameinlink,noabbrev,sort&compress]{cleveref}
+
+\usepackage{xcolor}
+% 1. Define colors for diff highlight
+% 1. Define colors for diff highlight & syntax
+\definecolor{diffadd}{RGB}{230, 255, 230}
+\definecolor{diffaddtext}{RGB}{0, 100, 0}
+\definecolor{diffdel}{RGB}{255, 230, 230}
+\definecolor{diffdeltext}{RGB}{139, 0, 0}
+\definecolor{codegray}{rgb}{0.5,0.5,0.5}
+\definecolor{keyblue}{rgb}{0.0, 0.0, 0.8}
+\definecolor{strpurple}{rgb}{0.6, 0.0, 0.6}
+
+% 2. Define the listing style
+\lstdefinestyle{diffstyle}{
+    language=C,
+    basicstyle=\ttfamily\small,
+    numbers=none,
+    keepspaces=true,                 % <-- Crucial: preserves spaces
+    columns=fullflexible,            % <-- Crucial: prevents awkward character spacing
+    keywordstyle=\color{keyblue},
+    commentstyle=\color{codegray}\itshape,
+    stringstyle=\color{strpurple},
+    showstringspaces=false,
+    breaklines=true,
+    frame=single,
+    rulecolor=\color{black!20},
+    escapeinside={(*@}{@*)}
+}
+
+\usepackage{tikz}
+\usetikzlibrary{shapes.geometric, arrows.meta, positioning, fit, backgrounds}
+\usepackage[most]{tcolorbox}
+
+% Color definitions
+\definecolor{controlcolor}{RGB}{40, 40, 40}
+\definecolor{datacolor}{RGB}{0, 102, 204}
+\definecolor{changesite}{RGB}{230, 80, 0}
+\definecolor{crashsite}{RGB}{204, 0, 0}
 
 
 \hypersetup{hidelinks} % removes colored boxes around references and links
@@ -64,6 +118,7 @@
   \newcommand{\bg}{white} % background
   \newcommand{\fg}{black} % foreground
 }
+
 
 \bibliography{bibliography}
 
@@ -105,3 +160,5 @@
   stringstyle=\color{TUMAccentGreen},
   captionpos=b
 }
+
+\newcommand{\bibliofont}{\normalfont}
