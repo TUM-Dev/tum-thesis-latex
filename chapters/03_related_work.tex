@@ -62,22 +62,12 @@ performance~\cite{herreraSeedSelectionSuccessful2021}, while corpus distillation
 can reduce redundant inputs and improve the efficiency of subsequent
 fuzzing~\cite{herreraCorpusDistillationEffective2020}.
 
-Consequently, prior work has investigated the reuse and selection of inputs from
-existing fuzzing campaigns. Continuous fuzzing approaches retain and select
-corpora across campaigns, including selection based on functional
-coverage~\cite{yooImprovingConfigurabilityUnitlevel2021,kimBugOssBenchmarkRealworld2024}.
-Other approaches select seeds based on their relevance to a particular target,
-for example, by using distance to the target
-location~\cite{canakciTargetFuzzUsingDARTs2022}. More recent work further
-explores the use of historical fuzzing results to improve the seed corpus for
-subsequent campaigns~\cite{liImprovingSeedQuality2025}.
+Consequently, prior work has investigated the reuse and selection of inputs from existing fuzzing campaigns.
+Continuous fuzzing approaches, aimed at regression-oriented fuzzing, retain and select corpora across commit-triggered campaigns, based on functional coverage~\cite{yooImprovingConfigurabilityUnitlevel2021,kimBugOssBenchmarkRealworld2024}, or distance to the change location~\cite{canakciTargetFuzzUsingDARTs2022}.
 
-These approaches motivate treating the corpus as a persistent artifact rather
-than reconstructing it for every campaign. Our approach therefore retains the
-existing corpus and augments it with newly generated seeds targeting code
-affected by the current commit. This combines previously acquired program
-coverage with commit-specific inputs while allowing the resulting corpus to be
-used by an otherwise unmodified fuzzer.
+These approaches motivate treating the corpus as a persistent artifact rather than reconstructing it for every campaign.
+Our approach, therefore, retains the existing corpus, distills it to the most relevant seeds, and augments it with newly generated seeds that target not only the parts changed by the current commit but also the transitively affected parts.
+This combines previously acquired program coverage with commit-specific inputs while allowing the resulting corpus to be used by an otherwise unmodified fuzzer.
 
 \section{Traditional Seed Generation}
 \label{sec:rw-traditional-generation}
@@ -125,7 +115,7 @@ categorize them by their \emph{targeting scope and context awareness}: broad, no
 \subsection{Broad- and Non-Targeted Approaches}
 \label{subsec:rw-broad}
 
-Broad \ac{LLM} approaches leverage generative models to maximize overall program
+Broad \ac{LLM} approaches leverage generative models to maximize the overall program
 coverage or to synthesize syntactically valid inputs without focusing on a
 specific vulnerability or code diff.
 
@@ -189,7 +179,7 @@ modifies multiple locations, and the faulty one has not yet been identified.
 While point-targeted approaches excel at reaching single static locations,
 regression testing requires evaluating distributed changes spread across an
 entire commit. The primary approach addressing this setting is
-Cleverest~\cite{liuEvaluatingLLMBasedRegression}.
+Cleverest~\cite{liuEvaluatingLLMBasedRegression2026}.
 
 Cleverest passes the raw commit diff together with a project description to an
 \ac{LLM} and tasks it with generating an input that triggers a bug introduced by
@@ -208,43 +198,25 @@ prior campaigns does not inform the result.
 
 \section{Comparative Taxonomy and Research Gap}
 \label{sec:rw-gap}
-\Cref{tab:fuzzing_taxonomy} summarizes the related work along the dimensions
-introduced above: the targeting scope of generated seeds, whether generation
-completes before the fuzzing campaign or is invoked from within it, whether
-directly changed and transitively affected code are targeted, and whether an
-existing corpus is retained and extended. Two gaps emerge:
+\Cref{tab:fuzzing_taxonomy} summarizes the related work along the dimensions introduced above: the targeting scope of generated seeds; whether generation completes before the fuzzing campaign or is invoked from within it; whether directly changed and transitively affected code is targeted; and whether an existing corpus is retained and extended.
+Two gaps emerge:
 \begin{description}
-  \item[Transitive scope is unused in generation.] The transitive scope of a
-    commit has been recognized on the engine side, but not in seed generation.
-    WAFLGO extends its guidance to code that a change affects through data-flow
-    dependencies, yet no generation-based approach draws on more than the diff
-    itself.
-  \item[Augmentation is absent throughout.] Approaches that generate seeds
-    construct them anew for each campaign, while the work that does treat corpora
-    as persistent artifacts~\cite{herreraSeedSelectionSuccessful2021,
-    yooImprovingConfigurabilityUnitlevel2021, canakciTargetFuzzUsingDARTs2022,
-    liImprovingSeedQuality2025} selects from what already exists rather
-    than generating new inputs for a specific change.
+  \item[Transitive scope is unused outside the engine.]
+    On the engine side, WAFLGO extends its guidance to code that a change affects through data-flow dependencies.
+    On the corpus side, no generation-based approach draws on more than the diff itself, and approaches that distill an existing corpus do not consider transitively affected code either.
+  \item[Augmentation is absent throughout.]
+    Approaches that generate seeds construct them anew for each campaign, while the work that does treat corpora as persistent artifacts~\cite{herreraSeedSelectionSuccessful2021, yooImprovingConfigurabilityUnitlevel2021, canakciTargetFuzzUsingDARTs2022, liImprovingSeedQuality2025} selects from what already exists rather than generating new inputs for a specific change.
 \end{description}
-
 
 \begin{tcolorbox}[colback=black!4, colframe=black!40, boxrule=0.4pt,
                   left=6pt, right=6pt, top=6pt, bottom=6pt]
-To the best of our knowledge, no existing approach combines
-\textbf{commit-derived, multi-point-targeted seed generation for affected code}
-with \textbf{augmentation of an existing seed corpus}.
+To the best of our knowledge, neither has a seed corpus been \textbf{distilled toward the code a commit affects} beyond the lines it changes, nor has an existing corpus been \textbf{augmented by an LLM agent} with inputs targeting that code, and the two steps have never been \textbf{combined in a single pipeline}.
 \end{tcolorbox}
 
-Our approach closes both gaps, and does so relative to Cleverest~\cite{liuEvaluatingLLMBasedRegression}, our
-closest prior work and the only other generation-based approach that targets
-commits. Where Cleverest derives its targets from the raw diff, we derive target
-regions from the \ac{CoI} of the changed statements, capturing code a commit
-affects indirectly through data or control dependencies; inputs for these regions
-are then generated using an LLM. And where Cleverest constructs a corpus from
-scratch, we retain previously acquired seeds together with their coverage
-information and combine them with the commit-specific inputs, so the resulting
-corpus preserves existing coverage while improving coverage of the newly affected
-code.
+Our approach closes these gaps, relative to Cleverest~\cite{liuEvaluatingLLMBasedRegression2026}, our closest prior work, and the only other generation-based approach targeting commits.
+Where Cleverest derives its targets from the raw diff, we derive target regions from the \ac{CoI} of the changed statements, capturing code a commit affects indirectly through data or control dependencies.
+And where Cleverest constructs a corpus from scratch, we first distill the existing corpus into seeds that exercise these regions, then augment it with inputs generated by a \ac{LLM} for the remaining uncovered parts.
+Moreover, where Cleverest relies on iterative prompting, in which the model receives feedback only through successive prompts, we employ an \ac{LLM} agent that autonomously manages its context by exploring the codebase, the existing corpus, and coverage feedback to refine its inputs.
 
 % The following three commands belong in the preamble.
 \newcommand{\yes}{\ding{51}}
@@ -300,7 +272,7 @@ RandLuzz~\cite{fengFuzzingRandomnessReasoning2025}
   & Single & \no  & \no  & \no  & \no \\
 SeedSmith~\cite{zhuSeedSmithLLMDrivenSeed2026}
   & Single & \yes & \no  & \no  & \no \\
-Cleverest~\cite{liuEvaluatingLLMBasedRegression}
+Cleverest~\cite{liuEvaluatingLLMBasedRegression2026}
   & Multi  & \yes & \yes & \no  & \no \\
 
 \midrule
@@ -308,20 +280,6 @@ Cleverest~\cite{liuEvaluatingLLMBasedRegression}
 \bottomrule
 \end{tabularx}
 
-\caption{Taxonomy of fuzzing and seed-generation approaches by covered domain.
-Approaches with identical values across all dimensions are grouped into a single
-row.}
+\caption{Taxonomy of fuzzing and seed-generation approaches by covered domain.}
 \label{tab:fuzzing_taxonomy}
-
-\vspace{2pt}
-{\footnotesize
-\textit{Scope} gives the targeting scope of generated seeds.
-\textit{Pre-Fuzz} indicates that generation completes before the campaign and
-therefore imposes no requirements on the fuzzing engine; \no{}~marks approaches
-that invoke the generator from within the fuzzing loop and thus depend on a
-modified or purpose-built fuzzer. \textit{Commit} and \textit{Affected} indicate
-whether directly changed and transitively affected code are targeted.
-\textit{Augment} indicates that the resulting corpus is the prior corpus
-extended with new seeds, rather than one constructed from scratch. \na{}~marks
-the generation-related dimension for approaches that generate no seeds.\par}
 \end{table}

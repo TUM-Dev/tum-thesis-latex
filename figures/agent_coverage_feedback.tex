@@ -54,14 +54,6 @@
 
 (*\rptLossHead{Newly uncovered affected lines: 0}*)
   \end{lstlisting}
-  \caption[Coverage delta report returned to the agent]{%
-    Coverage delta returned by \texttt{gain\_coverage\_report\_tool} after a
-    cycle, here for cURL. The report is a delta rather than a full coverage
-    dump: it names the affected lines the cycle newly reached, then ranks the
-    files that still contain uncovered affected lines by absolute count, giving
-    the uncovered fraction per file so that the agent can distinguish files it
-    has barely entered from files it has almost exhausted. The trailing count
-    closes the list without enumerating the long tail. Elisions marked
-    \rptElide{[...]} abbreviate the report for presentation.}
+  \caption[Coverage delta report returned to the agent]{Example of agent coverage feedback report.}
   \label{fig:coverage-report}
 \end{figure}

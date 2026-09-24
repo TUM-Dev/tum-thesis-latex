@@ -1,3 +1,17 @@
 \chapter{\abstractname}
 
-%TODO: Abstract
+Fuzzing is a widely used technique for finding bugs, and most bugs found by continuous fuzzing are regressions introduced by recent code changes.
+Such regressions are best caught before a change is merged, but fuzzing time is limited at that point, so the fuzzer's success depends heavily on its starting inputs, the seed corpus.
+Existing approaches to generating seeds for regression fuzzing consider only the changed code, even though many bugs manifest in code that a change affects but does not modify.
+They also generate seeds from scratch, although an existing corpus is often available.
+
+This thesis proposes TACCO (Targeted Affected-Code Corpus Optimization), a pipeline that prepares a targeted seed corpus prior to fuzzing.
+It first distills an existing corpus into the seeds most relevant to the code transitively affected by a commit.
+A large language model agent then generates additional seeds aimed at affected code that the corpus does not yet cover.
+The agent supplies well-formed inputs with the structure needed to reach that code, and the fuzzer mutates them into the malformed inputs that trigger the bug.
+
+A first study on six projects from the BugOSS benchmark compared three starting corpora and two scopes of affected code.
+Starting from the distilled corpus and targeting all affected code gave the best trade-off: compared with the original corpus, the resulting corpora increased coverage of affected code on five of six projects, by up to \num{52.3}~percentage points, while being \SIrange{42}{98}{\percent} smaller.
+A second study ran \SI{8}{\hour} AFL++ campaigns on twelve projects, six of them not used for tuning.
+Compared with the original corpus, the pipeline did not change how often regressions were found, and its median time to exposure was \SI{71}{\minute} shorter, or \SI{31}{\minute} including augmentation time, but this difference was not statistically significant.
+These results show that distillation and augmentation yield smaller corpora that cover more affected code and suggest that such corpora can help expose regressions more quickly in time-limited settings.

@@ -5,6 +5,8 @@
 \section{Design Goals}
 \label{sec:design-goals}
 
+\input{figures/pipeline}
+
 The overarching goal of the proposed approach is to automatically augment an
 existing seed corpus with inputs that enable a fuzzer to trigger regressions
 introduced by a software commit as quickly as possible. This is motivated by the
@@ -32,7 +34,7 @@ coverage while minimizing corpus size}.
 
 \paragraph{Augmentation instead of generation from scratch.}
 We deliberately formulate this as a corpus \emph{augmentation} problem. In a
-\ac{CI/CD} setting, projects are fuzzed repeatedly throughout their development,
+\ac{ci-cd} setting, projects are fuzzed repeatedly throughout their development,
 allowing the seed corpus to accumulate inputs that exercise increasingly large
 portions of the program. Discarding this accumulated corpus for every commit
 would lose previously acquired knowledge and force the seed-generation process to
@@ -46,7 +48,7 @@ campaigns~\cite{liImprovingSeedQuality2025}.
 For the augmentation itself, we employ a \ac{LLM}. Previous
 work has demonstrated that \acp{LLM} can generate effective targeted fuzzing inputs by
 reasoning about source code and input
-structure~\cite{liuEvaluatingLLMBasedRegression, zhuSeedSmithLLMDrivenSeed2026,
+structure~\cite{liuEvaluatingLLMBasedRegression2026, zhuSeedSmithLLMDrivenSeed2026,
 xuDirectedGreyboxFuzzing2025, xuISC4DGFEnhancingDirected2024,
 fengFuzzingRandomnessReasoning2025}. This capability complements conventional
 mutation-based fuzzing, whose mutations are largely unaware of program semantics
@@ -58,10 +60,10 @@ uncovered program paths. In addition, by providing feedback signals from the aff
 seeds, while the greybox fuzzer remains responsible for high-throughput mutation
 and exploration around these starting points.
 
-\include{figures/pipeline}
+
 
 \paragraph{Resulting pipeline.}
-Based on these goals, we design the pipeline shown in
+Based on these goals, we design TACCO shown in
 \cref{fig:solution-pipeline}, which proceeds in three stages:
 
 \begin{enumerate}
@@ -91,245 +93,353 @@ The line-based representation of the affected slice also determines the coverage
 \section{Distilling the Corpus}
 \label{sec:distilling-corpus}
 
-Before augmenting the corpus, we distill the reference corpus into a smaller set
-of seeds that retains most of its \ac{CACC}. This step serves two purposes:
+\input{figures/distill_corpus}
+
+Before augmenting the corpus, we distill the reference corpus into a smaller set of seeds that retains most of its \ac{CACC}.
+This step serves two purposes:
 
 \begin{description}
-  \item[Focused agent input.] It reduces the amount of material the \ac{LLM} agent
-    must inspect, so that the agent sees fewer seeds with a higher information
-    density per seed.
-  \item[Lower fuzzing overhead.] It reduces the number of seeds the fuzzer must
-    read, execute, and retain, and therefore the time spent on the initial
-    corpus pass rather than on generating new inputs.
+  \item[Focused agent input.] It reduces the amount of material the \ac{LLM} agent must inspect, so that the agent sees fewer seeds with a higher information density per seed.
+  \item[Lower fuzzing overhead.] It reduces the number of seeds the fuzzer must read, execute, and retain, as well as the mutation space, thereby concentrating mutation effort on regression-relevant code and accelerating coverage and exposure.
 \end{description}
 
 \noindent
-Distillation is applied separately per project and fuzz target. It can also be
-disabled entirely, which allows us to investigate the influence of different
-starting corpora; this configuration is evaluated in
-\cref{chapter:evaluation}.
+Distillation is applied separately per project and fuzz target.
+It can also be disabled entirely, which allows us to investigate the influence of different starting corpora; this configuration is evaluated in \cref{chapter:evaluation}.
 
-\paragraph{Problem formulation.}
-We formulate corpus distillation as a maximum coverage problem. Let
-$S=\{s_1,\ldots,s_n\}$ denote the seeds remaining after the initial corpus
-minimization described below, and let $A=\{a_1,\ldots,a_m\}$ denote the set of
-affected source lines determined in \cref{sec:affected-code}.
-For each seed $s_i$, let $C(s_i)\subseteq A$ denote the affected lines covered
-by that seed. Given a corpus-size bound $k$, the objective is to select at most
-$k$ seeds such that the number of distinct affected lines covered by the
-selected seeds is maximized:
-
-\begin{equation}
-  \label{eq:max-coverage}
-  \max_{S'\subseteq S}\ \left|\bigcup_{s\in S'} C(s)\right|
-  \qquad\text{subject to}\qquad
-  |S'|\leq k .
-\end{equation}
-
-\noindent
-The constraint is an upper bound rather than an equality: $k$ is the
-\emph{maximum permitted} corpus size, not the number of seeds to be selected,
-so the optimization is free to return fewer seeds whenever this does not cost
-coverage. Maximum coverage is NP-hard, and the greedy algorithm is optimal
-among polynomial-time approximations under standard complexity
-assumptions~\cite{feigeThresholdLnN1998}. The instances arising here are small
-enough to be solved exactly and we solve each of them with \textit{PySAT}~\cite{PySATSATTechnology}.
+Distillation proceeds in the three stages shown in \cref{fig:distillation-overview}: measuring the affected lines each seed covers, computing coverage-optimal selections for a range of corpus-size bounds, and choosing the bound beyond which additional seeds stop paying off.
+The coverage matrix sketched in the figure also serves as a running example, which we follow through every step of the optimization.
 
 \paragraph{Determining seed coverage.}
-We first minimize the reference corpus with \texttt{afl-cmin} from
-AFL++~\cite{fioraldiAFLCombiningIncremental2020}, which discards seeds that are
-redundant with respect to edge coverage and thereby reduces the number of
-candidates considered in the subsequent optimization. We then execute each
-remaining seed individually on a coverage-instrumented build of the target and
-intersect its source-line coverage with $A$. The resulting seed-to-line
-coverage relation forms the input to the optimization problem. Because this
-relation is measured rather than derived statically, seeds whose coverage is
-input-independent but execution-dependent (for example due to timeouts) may be
-recorded conservatively; we treat any line not observed as uncovered.
+The optimization requires, for every seed, the set of affected lines it covers.
+Obtaining this relation is the most expensive part of distillation, since every seed of the reference corpus has to be executed.
+We execute every seed individually on a coverage-instrumented build of the fuzz target.
+This build uses LLVM's source-based code coverage~\cite{LlvmLlvmproject2026}: the compiler inserts execution counters into the program and embeds a mapping from these counters to source regions in the binary.
+Replaying a seed runs the fuzz harness once on that input and writes a raw profile holding the counter values of this execution; if the harness spawns further processes, the profiles of all of them are summed.
+Evaluating the profile against the embedded mapping yields the source lines the seed executed, i.e.\ the line coverage \texttt{llvm-cov} would report for it.
+Rather than invoking \texttt{llvm-cov} once per seed, which reloads the coverage mapping of the binary for every seed, we translate the mapping once into a table from counters to source lines and evaluate each raw profile against this table as soon as its replay finishes, discarding the profile afterwards.
+This evaluation reproduces the line coverage of \texttt{llvm-cov} exactly, and an optional check compares it against a genuine \texttt{llvm-cov} export of the summed counters.
+Seeds are replayed in parallel, each with its own temporary directory, so that concurrent executions cannot interfere through shared files.
+Seeds whose replay fails without producing a profile are excluded from the corpus~$S$ considered below.
+
+The result is stored per source line as a bit vector with one bit per seed, in which bit~$i$ is set if and only if seed~$s_i$ executed the line; seeds are numbered in the lexicographic order of their file names.
+Each row of the coverage matrix in \cref{fig:distillation-overview} is such a bit vector.
+Before the relation is used, we verify that every seed index lies within the length of the bit vectors, since a mismatch would silently corrupt the coverage of every line.
+Intersecting each seed's line coverage with the set of affected lines gives the seed-to-line coverage relation that forms the input to the optimization.
+Because this relation is measured rather than derived statically, a line counts as covered by a seed only if it was observed during that seed's replay; lines whose execution depends on timing or on the environment may therefore be recorded conservatively.
+
+% Requires in the preamble: amsmath, booktabs, enumitem, siunitx (in addition to what you already load).
+
+\paragraph{Problem formulation.}
+We formulate corpus distillation as a maximum coverage problem.
+Let $S=\{s_1,\ldots,s_n\}$ denote the seeds of the reference corpus, and let $A=\{a_1,\ldots,a_m\}$ denote the set of affected source lines determined in \cref{sec:affected-code}.
+For each seed $s_i$, let $C(s_i)\subseteq A$ denote the affected lines covered by that seed.
+Given a corpus-size bound $k$, the objective is to select at most $k$ seeds such that the number of distinct affected lines covered by the selected seeds is maximized:
+\begin{equation}
+  \label{eq:max-coverage}
+  \begin{alignedat}{2}
+    &\text{maximize}   &\quad& \Bigl|\,\bigcup_{s\in S'} C(s)\Bigr| \\
+    &\text{constraint} &     & S'\subseteq S,\quad |S'|\leq k.
+  \end{alignedat}
+\end{equation}
+The constraint is an upper bound rather than an equality: $k$ is the \emph{maximum permitted} corpus size, not the number of seeds to be selected, so the optimization is free to return fewer seeds whenever this does not cost coverage.
+Maximum coverage is NP-hard, and the greedy algorithm is optimal among polynomial-time approximations under standard complexity assumptions~\cite{feigeThresholdLnApproximating1998}.
+After the reductions described next, the instances arising here are small enough to be solved exactly, which we do with the constraint-programming solver CP-SAT from Google OR-Tools~\cite{cpsatlp}.
+
+\paragraph{Running example.}
+The coverage matrix in \cref{fig:distillation-overview} describes $n=6$ seeds and $m=5$ affected lines with
+\begin{alignat*}{2}
+  C(s_1) = C(s_4) &= \{a_1, a_2, a_5\}, &\qquad C(s_2) &= \{a_1, a_2, a_3\}, \\
+  C(s_3) = C(s_6) &= \{a_3\},           &       C(s_5) &= \{a_5\}.
+\end{alignat*}
+No seed covers $a_4$, so even the complete corpus covers only four of the five affected lines.
+At $k=1$, the best selections are the single seeds $s_1$, $s_2$, and $s_4$, each covering three lines; at $k=2$, the selection $\{s_1, s_2\}$ covers all four coverable lines.
+The example is small enough to check by hand, but real instances are not: for \texttt{zstd}, with \num{12462} seeds, there are $\tbinom{\num{12462}}{20} > \num{e63}$ ways to choose $20$ of them, which rules out enumeration.
+
+\paragraph{Reducing the instance.}
+Coverage relations of real corpora are highly redundant: lines of the same basic block are covered by exactly the same seeds, and many seeds exercise the same code.
+Before solving, we therefore shrink the instance with the following reductions, each of which preserves the optimal value for every bound $k$:
+\begin{enumerate}[label=(\roman*), ref=(\roman*), nosep, widest=iii]
+  \item\label{red:uncovered-lines} remove lines that no seed covers;
+  \item\label{red:patterns} merge lines covered by exactly the same set of seeds into a single \emph{coverage pattern}~$p$, weighted by the number $w_p$ of lines it represents;
+  \item\label{red:empty-seeds} remove seeds that cover no affected line;
+  \item\label{red:identical-seeds} collapse seeds with identical coverage into one representative, the one with the lowest index;
+  \item\label{red:dominated-seeds} remove seeds whose coverage is a strict subset of another seed's coverage.
+\end{enumerate}
+Reductions \ref{red:identical-seeds} and \ref{red:dominated-seeds} follow from an exchange argument: if $C(s_i)\subseteq C(s_j)$, replacing $s_i$ by $s_j$ in a selection, or dropping $s_i$ if $s_j$ is already selected, never lowers coverage and never adds a seed.
+Reduction \ref{red:identical-seeds} must precede \ref{red:dominated-seeds}: two seeds with identical coverage are each a subset of the other, and a subset test on the unreduced seeds would remove both.
+In the following, $P$ denotes the set of patterns and, for each $p\in P$, $S(p)$ denotes the remaining seeds that cover it.
+
+In the running example, \ref{red:uncovered-lines} removes $a_4$, and \ref{red:patterns} merges $a_1$ and $a_2$ into a pattern $p_1$ with $w_{p_1}=2$, while $a_3$ and $a_5$ become the patterns $p_2$ and $p_3$ with weight~$1$.
+Every seed covers some affected line, so \ref{red:empty-seeds} removes nothing.
+Reduction \ref{red:identical-seeds} collapses $s_4$ into $s_1$ and $s_6$ into $s_3$.
+Reduction \ref{red:dominated-seeds} then removes $s_3$, whose pattern set $\{p_2\}$ is a strict subset of $\{p_1, p_2\}$ covered by $s_2$, and $s_5$, whose pattern set $\{p_3\}$ is a strict subset of $\{p_1, p_3\}$ covered by $s_1$.
+Two seeds and three patterns remain, with $S(p_1)=\{s_1, s_2\}$, $S(p_2)=\{s_2\}$, and $S(p_3)=\{s_1\}$.
+On real corpora, the effect is substantial: for \texttt{zstd}, the largest reference corpus of the study with \num{12462} seeds, only \num{1600} seeds remain, and its \num{4288} coverable affected lines collapse into \num{1111} patterns.
+
+\paragraph{From SAT to CP-SAT.}
+CP-SAT builds on the Boolean satisfiability problem (SAT).
+A SAT instance consists of Boolean variables and a set of \emph{clauses}, each of which is a disjunction of variables or their negations.
+The goal of a SAT solver is to decide whether the variables can be assigned truth values such that every clause is satisfied, and to return such an assignment if one exists.
+For instance, the clauses $(a \lor b)$, $(\lnot a \lor c)$, and $(\lnot b \lor \lnot c)$ are satisfied by $a=c=1$ and $b=0$.
+SAT, therefore, answers a yes-or-no question: it finds \emph{some} solution, but has no notion of one solution being better than another.
+
+CP-SAT~\cite{cpsatlp} extends this goal in two directions that corpus distillation requires.
+First, in addition to clauses, a model may contain linear constraints over the variables, such as a bound on how many of them can be true.
+Second, a model may include an objective function, and CP-SAT searches not for any solution but for one that maximizes it.
+When it terminates, CP-SAT reports whether the returned solution is \emph{optimal}, i.e., \ proven to be the best possible, or merely \emph{feasible}, i.e., \ valid but without such a proof.
+Corpus distillation fits this form directly: the selection of seeds and the coverage of patterns are Boolean variables; the relation between them is expressed as clauses; the corpus-size bound is a linear constraint; and the covered lines form the objective.
 
 \paragraph{Constraint encoding.}
-The seed-selection problem is encoded as a pseudo-Boolean optimization problem
-over two families of binary variables. For each seed $s_i$ and affected line
-$a_j$, let
-\[
-x_i =
-\begin{cases}
-1, & \text{if seed $s_i$ is selected},\\
-0, & \text{otherwise},
-\end{cases}
-\qquad
-y_j =
-\begin{cases}
-1, & \text{if affected line $a_j$ is covered},\\
-0, & \text{otherwise}.
-\end{cases}
-\]
-
-For every seed--line pair with $a_j \in C(s_i)$, selecting $s_i$ must imply that
-$a_j$ is covered:
-\begin{equation}
-  \neg x_i \lor y_j .
-  \label{eq:coverage-clause}
-\end{equation}
-
-Conversely, a line may be marked as covered only if at least one selected seed
-covers it:
-\begin{equation}
-  \neg y_j
-  \lor
-  \bigvee_{i:\,a_j\in C(s_i)} x_i .
-  \label{eq:coverage-definition}
-\end{equation}
-
-Together, \eqref{eq:coverage-clause} and \eqref{eq:coverage-definition}
-establish that $y_j$ is true if and only if at least one selected seed covers
-$a_j$. Only \eqref{eq:coverage-definition} is required for optimality, because
-the objective rewards setting $y_j$ to true and therefore never leaves a
-covered line unmarked; we include \eqref{eq:coverage-clause} so that the
-variables carry their intended meaning in every model, not only in optimal
-ones.
-
-Finally, the corpus size is bounded by the cardinality constraint
-\begin{equation}
-  \sum_{i=1}^{n} x_i \leq k .
-  \label{eq:size-constraint}
-\end{equation}
+The reduced problem is encoded as a pseudo-Boolean optimization problem over two families of binary variables.
+For each remaining seed $s_i$, the variable $x_i\in\{0,1\}$ is $1$ if and only if $s_i$ is selected, and for each pattern $p\in P$, the variable $y_p\in\{0,1\}$ is $1$ if and only if $p$ is covered.
+The complete model reads
+\begin{subequations}
+  \label{eq:cpsat-model}
+  \begin{alignat}{3}
+    &\text{maximize}   &\quad& (n+1)\sum_{p\in P} w_p\, y_p \;-\; \sum_{i} x_i
+      \label{eq:objective} \\
+    &\text{rules}      &     & y_p \rightarrow \bigvee_{i:\,s_i\in S(p)} x_i
+      &\qquad& \text{for all } p\in P,
+      \label{eq:coverage-definition} \\
+    &\text{constraint} &     & \sum_{i} x_i \leq k.
+      \label{eq:size-constraint}
+  \end{alignat}
+\end{subequations}
+Constraint \eqref{eq:coverage-definition} states that a pattern may be marked as covered only if at least one selected seed covers it.
+Each such implication is a single clause, $\lnot y_p \lor \bigvee_{i:\,s_i\in S(p)} x_i$.
+The converse implication, that selecting a seed marks its patterns as covered, is not encoded.
+The objective rewards every covered pattern, so an optimal solution never leaves a coverable pattern unmarked, and omitting the converse halves the number of constraints.
+Finally, the cardinality constraint \eqref{eq:size-constraint} bounds the corpus size.
 
 \paragraph{Objective function.}
-The primary objective is to maximize the number of distinct affected lines
-covered by the selected corpus. As a secondary objective, solutions achieving
-the same \ac{CACC} are preferred if they use fewer seeds. This lexicographic
-objective is encoded as a single weighted objective:
-\begin{equation}
-  \max
-  \left(
-    (n+1)\sum_{j=1}^{m} y_j
-    -
-    \sum_{i=1}^{n} x_i
-  \right).
-  \label{eq:objective}
-\end{equation}
+The primary objective is to maximize the number of distinct affected lines covered by the selected corpus, which is the weighted number of covered patterns.
+As a secondary objective, solutions achieving the same \ac{CACC} are preferred if they use fewer seeds.
+The objective \eqref{eq:objective} encodes this lexicographic preference as a single weighted sum.
+The weight $n+1$ strictly exceeds the largest possible number of selected seeds, so one additional covered line always outweighs any reduction in corpus size.\footnote{Given \eqref{eq:size-constraint}, the weaker bound $k+1$ would suffice; we use $n+1$ so that the encoding remains valid independently of $k$.}
+Note that $n$ is the size of the original corpus, not of the reduced instance.
+The resulting corpus is therefore coverage-optimal under the given size bound and, among equally covering solutions, minimal in the number of seeds.
 
-\noindent
-The weight $n+1$ strictly exceeds the largest possible value of
-$\sum_i x_i$, so one additional covered line always outweighs any reduction in
-corpus size.\footnote{Given \eqref{eq:size-constraint}, the weaker bound $k+1$
-would suffice; we use $n+1$ so that the encoding remains valid independently of
-$k$.} The objective therefore maximizes \ac{CACC} first and minimizes corpus
-size only among solutions of equal coverage. The resulting corpus is
-coverage-optimal under the given size bound and, among equally covering
-solutions, minimal in the number of seeds. Ties beyond these two criteria are
-broken by the solver; we fix the seed order and solver configuration so that
-the selection is reproducible.
+For the reduced running example, $n=6$, so every covered line is worth~$7$, and \eqref{eq:cpsat-model} becomes
+\begin{equation*}
+  \begin{alignedat}{2}
+    &\text{maximize}   &\quad& 7\,(2\,y_{p_1} + y_{p_2} + y_{p_3}) - x_1 - x_2 \\
+    &\text{rules}      &     & y_{p_1} \rightarrow x_1 \lor x_2, \qquad
+                               y_{p_2} \rightarrow x_2, \qquad
+                               y_{p_3} \rightarrow x_1, \\
+    &\text{constraint} &     & x_1 + x_2 \leq k.
+  \end{alignedat}
+\end{equation*}
+\Cref{tab:distillation-example-scores} lists the objective values of the relevant selections.
+The penalty term decides between selections of equal coverage: on the unreduced instance, $\{s_1, s_2, s_3\}$ also covers all four lines but scores lower than $\{s_1, s_2\}$, so the smaller selection is preferred.
+The term remains necessary after the reduction, since a seed that is not dominated by any single other seed can still become redundant in combination with several others.
+Ties beyond these two criteria, such as between $\{s_1\}$ and $\{s_2\}$ at $k=1$, are broken by the solver.
+
+\begin{table}
+  \centering
+
+  \begin{tabular}{@{}lccr@{}}
+    \toprule
+    Selection & Seeds & Covered lines & Objective \\
+    \midrule
+    $\{s_1\}$           & 1 & 3 & $7\cdot 3 - 1 = 20$ \\
+    $\{s_2\}$           & 1 & 3 & $7\cdot 3 - 1 = 20$ \\
+    $\{s_1, s_2\}$      & 2 & 4 & $7\cdot 4 - 2 = 26$ \\
+    $\{s_1, s_2, s_3\}$ & 3 & 4 & $7\cdot 4 - 3 = 25$ \\
+    \bottomrule
+  \end{tabular}
+  \caption{Objective values of selected solutions in the distillation running example.}
+  \label{tab:distillation-example-scores}
+\end{table}
+
+\paragraph{Solving.}
+For each bound $k$, CP-SAT returns a selection together with a proof that no selection within the bound achieves a higher objective value; in the running example, it returns one of $\{s_1\}$ and $\{s_2\}$ at $k=1$ and $\{s_1, s_2\}$ at $k=2$.
+By default, CP-SAT runs several search strategies in parallel, and which of several equally good solutions it returns then depends on their timing.
+We therefore run CP-SAT with a single search worker and a fixed random seed, so that the same instance always yields the same selection.
+The individual bounds are independent problems and are solved in parallel.
+Every selection is mapped back to the original seeds, and its coverage is recomputed on the unreduced coverage relation, which guards against errors in the reduction.
 
 \paragraph{Choosing the corpus-size bound.}
-Rather than committing to a single corpus-size bound, we solve
-\eqref{eq:max-coverage} for a sequence of bounds, namely $k=1$ followed by
-multiples of five, $k=5,10,15,20,\ldots$, up to the size of the minimized
-corpus. Let $f(k)$ denote the optimal \ac{CACC} at bound $k$. Since the
-feasible set grows with $k$, $f$ is non-decreasing, and the resulting coverage
-curve exhibits diminishing returns. We select as the cutoff the smallest
-evaluated bound $k_t$ whose relative gain over the following bound falls below
-\SI{2}{\percent}, that is
+Rather than committing to a single corpus-size bound, we solve \eqref{eq:max-coverage} for the bounds $k=1,5,10,\ldots,50$ and $k=60,70,\ldots,100$, omitting those that exceed the size of the reference corpus.
+If the reference corpus has at most \num{100} seeds, the bound $k=n$ is evaluated as well; since it does not restrict the selection, the complete corpus is used for it directly, without solving.
+Larger bounds are not considered, since a corpus of more than \num{100} seeds would defeat the purpose of distillation.
+Let $f(k)$ denote the optimal \ac{CACC} at bound $k$.
+Since the feasible set grows with $k$, $f$ is non-decreasing, and the resulting coverage curve exhibits diminishing returns.
+We select as the cutoff the smallest evaluated bound $k_t$ whose relative gain over the next evaluated bound $k_{t+1}$ falls below \SI{2}{\percent}, that is
 \begin{equation}
-  \frac{f(k_{t+1})-f(k_t)}{f(k_t)} < 0.02 .
+  \frac{f(k_{t+1})-f(k_t)}{f(k_t)} < 0.02 ,
   \label{eq:elbow}
 \end{equation}
-This threshold is a heuristic; it is fixed across all projects and was not
-tuned per project.
+and fall back to the largest evaluated bound if no such $k_t$ exists.
+The distilled corpus is the selection computed for $k_t$, which may contain fewer than $k_t$ seeds.
+The threshold is a heuristic; it is fixed across all projects and was not tuned per project.
 
-The trade-off matters mainly for the subsequent \ac{LLM}-based augmentation. A
-corpus of hundreds of seeds may provide marginally higher coverage, but it
-exposes the agent to a large amount of input with little additional information
-per seed. Applying \eqref{eq:elbow} reduces the reference corpus to between
-\num{1} and \num{30} seeds while retaining between \SI{92.0}{\percent} and
-\SI{100.0}{\percent} of the \ac{CACC} of the corresponding minimized corpus
-across the evaluated projects (per-project means over the distillation runs;
-see \cref{appendix:distill_elbow_curves}). Whether the sacrificed coverage can
-subsequently be recovered, and whether the smaller corpus benefits the
-augmentation process, is evaluated in \cref{chapter:evaluation}.
+The trade-off matters mainly for the subsequent \ac{LLM}-based augmentation.
+A corpus of hundreds of seeds may provide marginally higher coverage, but it exposes the agent to a large amount of input with little additional information per seed.
+Applying \eqref{eq:elbow} reduces the reference corpus to between \num{1} and \num{30} seeds while retaining between \SI{88.5}{\percent} and \SI{100.0}{\percent} of the \ac{CACC} of the complete reference corpus across the evaluated configurations (see \cref{appendix:distill_elbow_curves}).
+Whether the sacrificed coverage can subsequently be recovered and whether the smaller corpus benefits the augmentation process are evaluated in \cref{chapter:evaluation}.
 
 \paragraph{Role of the distilled corpus.}
-The distilled corpus is not intended to be the final corpus. It provides a
-compact, coverage-efficient starting point for the LLM agent, which
-subsequently attempts to recover the uncovered affected code and to extend the
-corpus with newly generated seeds.
+The distilled corpus is not intended to be the final corpus.
+It provides a compact, coverage-efficient starting point for the \ac{LLM} agent, which subsequently attempts to recover the uncovered affected code and to extend the corpus with newly generated seeds.
 
 \section{Augmenting the Corpus}
 \label{sec:augmenting-corpus}
 
-The final step of the pipeline augments the corpus with newly generated seeds that cover affected code not represented in the reference corpus. The goal of this step is not to generate arbitrary inputs, but to investigate the program and autonomously develop a strategy for constructing inputs that can reach the affected code.
+The final step of the pipeline augments the corpus with newly generated seeds that cover affected code not represented in the reference corpus.
+The goal is not to generate arbitrary inputs, but to investigate the program and autonomously develop a strategy for constructing inputs that reach the affected code.
 
-This distinction motivates the use of an agent rather than a single-shot or fixed generation loop. Reaching a given affected line typically requires satisfying a chain of conditions that are themselves unrelated to the commit: magic bytes in a file header, length or offset fields that must remain consistent, checksums, or format-specific validation performed long before execution reaches the changed code. These gating conditions are not part of the affected slice and are therefore invisible in the coverage feedback. A generator presented only with the affected code and an aggregate coverage signal has no means of determining why its inputs are rejected: it observes that coverage does not increase, but not where execution is cut short. We initially implemented such an architecture, following the structure proposed by SeedMind~\cite{shiHarnessingLargeLanguage2024}, and observed exactly this failure mode. The model repeatedly produced inputs that were discarded during early parsing and received no information to correct them. Granting the model the ability to inspect the program itself, to locate the parser, read the validation logic, and examine existing seeds byte by byte, resolves this problem, because the information required to pass these gates is present in the source tree even though it is absent from the feedback signal. SeedSmith~\cite{zhuSeedSmithLLMDrivenSeed2026} likewise demonstrates that granting the model autonomy over its own investigation yields effective seeds, and that such autonomous exploration is a practical design for \ac{LLM}-driven seed generation.
+This motivates the use of an agent rather than a single-shot or fixed generation loop, as employed by Cleverest~\cite{liuEvaluatingLLMBasedRegression2026}.
+Reaching an affected line typically requires satisfying a chain of conditions unrelated to the commit: magic bytes in a file header, consistent length or offset fields, checksums, or format-specific validation performed long before execution reaches the changed code.
+These gating conditions are not part of the affected slice and are therefore invisible in the coverage feedback.
+A generator given only the affected code and an aggregate coverage signal observes that coverage does not increase, but not where execution is cut short.
+We initially implemented such an architecture, following SeedMind~\cite{shiHarnessingLargeLanguage2024}, and observed exactly this failure mode: the model repeatedly produced inputs that were discarded during early parsing and received no information to correct them.
+Allowing the model to inspect the program itself, locate the parser, read the validation logic, and examine existing seeds byte by byte resolves this, because the information required to pass these gates is present in the source tree even though it is absent from the feedback signal.
+SeedSmith~\cite{zhuSeedSmithLLMDrivenSeed2026} likewise shows that granting the model autonomy over its own investigation is a practical and effective design for \ac{LLM}-driven seed generation.
 
-To enable this behavior, the agent is provided with a workspace containing the artifacts it needs to reason about the program, a set of tools to explore them, and a single feedback tool to advance its corpus. \cref{fig:agent-loop} shows the resulting loop together with the artifacts and tools available at each stage. The remainder of this section first describes the environment in which the agent operates and then the procedure it follows within it.
+The agent is therefore provided with a workspace containing the artifacts it needs to reason about the program, a set of tools to explore them, and a single feedback tool to advance its corpus.
+\cref{fig:agent-loop} shows the resulting loop together with the artifacts and tools available at each stage.
+The remainder of this section first describes how a run proceeds and terminates, then the task specification given to the agent, and finally the environment in which it operates: the harness, the workspace, seed generation, and coverage feedback.
 
 \input{figures/agent_loop.tex}
 
-\subsection{Agent Harness}
-\label{sec:agent-harness}
+\subsection{Typical Agent Workflow}
+\label{sec:agent-workflow}
 
-The harness is the surrounding program that maintains the conversation state, exposes the available tools to the model, executes the tool calls it emits, and returns their results, as described in \cref{chapter:background}. We use the LangGraph \texttt{deepagents} harness~\cite{DeepAgentsOpen} as our base. It is open-source, well-engineered, straightforward to extend with custom tools, and model-agnostic, allowing the same pipeline to run with different \acp{LLM} without modification. We extend it with the workspace, the toolset, and the coverage-feedback tool described below, while leaving its underlying planning and file-editing behavior unchanged. The base system prompt shipped with \texttt{deepagents} is reproduced in Appendix~\ref{appendix:deepagents_prompt}.
+\input{figures/agent_workflow}
 
-The length of the resulting interaction is not a limiting factor in practice. Modern models provide context windows large enough to accommodate the source excerpts, coverage reports, and generator revisions accumulated over a full augmentation run. Should the context limit nevertheless be approached, the harness summarizes the conversation history and continues from the summary, so that the run is bounded by the budgets described in \cref{sec:agent-termination} rather than by the context window.
-
-\subsection{Workspace}
-\label{sec:agent-workspace}
-
-The agent operates on a workspace filesystem rather than on content injected into its prompt. This keeps the amount of material in the context window under the agent's control: it decides which files to open and how much to read from them, rather than receiving the entire program up front. The layout of this workspace is shown in \cref{fig:agent-loop}.
-
-The workspace contains two given artifacts and one that the agent produces. The first is the corpus directory, into which the distilled corpus (see \cref{sec:distilling-corpus}) is placed. It serves a dual role: it is the reference corpus from which the agent infers the expected input format, and it is simultaneously the working corpus to which the generated seeds are added. There is thus no separate output location, and seeds written in one cycle persist and remain visible in all subsequent ones. The second artifact is the source tree of the \ac{SUT}, including the fuzzing harness that defines how an input file is passed into the program under test. The harness is the entry point of every execution, in our case \texttt{LLVMFuzzerTestOneInput}, and therefore determines which parts of the program an input can reach at all; making it available allows the agent to reason about the actual interface it is generating inputs for. The third is the generator script the agent writes, which resides in the workspace root.
-
-The source tree is annotated with the current coverage state, as shown in \cref{fig:annotated-source}. Each line is prefixed with an affectedness marker and a coverage marker, so that the two pieces of information the agent needs are attached directly to the code they describe.
- 
-\include{figures/agent_annotated_source_code}
- 
-Here \texttt{[A]} marks a line as belonging to the commit-affected slice computed in \cref{sec:affected-code}, while \texttt{[C]}, \texttt{[P]}, and \texttt{[.]} denote covered, partially covered, and uncovered lines, respectively. Partial coverage arises where a line is reached but not fully evaluated, for instance, under short-circuit evaluation or when a condition holds, but its body is skipped. Coverage is aggregated over the whole corpus rather than attributed to a single execution, so \texttt{[C]} means that some seed covers the line, not that any single seed follows the surrounding path in full. The agent is instructed to target \texttt{[A][.]} lines first and \texttt{[A][P]} lines as a fallback, and to ignore everything else. Placing this information in the source rather than in a separate report means the agent always reads the remaining targets together with the control flow that determines how they are reached. This idea is inspired by SeedMind~\cite{shiHarnessingLargeLanguage2024}, which uses a similar mechanism to combine code with coverage and target signal. The coverage required for the initial annotation is already available from the distillation step, where every seed of the reference corpus was executed on the instrumented binary; the annotation is therefore written once when the workspace is created and updated in place after each cycle.
-
-The agent explores this workspace through the harness's filesystem tools. Directories are traversed with \texttt{ls} and \texttt{glob}, file contents are accessed through \texttt{read\_file}, and \texttt{grep} locates specific identifiers, constants, or format strings across the tree. Because seeds are frequently binary, the agent is additionally given \texttt{hexdump}, \texttt{strings}, and \texttt{file\_type}, which allow it to inspect the byte-level structure of reference seeds, identify headers and length fields, recover embedded textual markers, and determine what kind of input a seed represents. Writing is performed with \texttt{write\_file} and is used only for the generator script.
-
-\subsection{Task Specification}
-\label{sec:agent-prompt}
-
-The agent's task is specified through an initial prompt, shown in \cref{fig:agent-prompt}. It states the objective, defines what constitutes a cycle, introduces the coverage-marker legend that gives the annotated source tree its meaning, fixes the persistence contract for generated seeds, describes the two feedback formats, prescribes the per-cycle workflow, and constrains the shape of the generator script. The individual parts are highlighted in the figure to make this structure explicit. A final per-run message binds the cycle budget and the concrete workspace paths and carries the initial coverage summary, which reports the uncovered lines affected by the reference corpus.
- 
-\input{figures/agent_prompt.tex}
-
-The prompt was not derived analytically. Its wording and structure are the result of an iterative pilot phase: we ran the agent on the open-source projects \emph{readstat} and \emph{libhtp}, inspected the resulting transcripts, and revised the specification whenever a systematic deviation from the intended workflow appeared; most notably, trying to blindly generate inputs without inspecting the existing corpus and codebase, generating non-harness-compatible Python seed generation scripts, or focusing on only covering a small hard to reach fraction of code. Iteration stopped once no such deviation recurred across many consecutive pilot runs. The prompt was then frozen and used verbatim for every run reported in \cref{chapter:evaluation}; no per-project or per-arm adaptation was performed. We make no claim that this formulation is optimal, only that it is fixed and identical across arms, so that any observed difference is attributable to the starting corpus rather than to the instructions.
- 
-Beyond this specification, the prompt prescribes no strategy: it does not tell the agent which files to read, in which order to investigate the program, or how to construct inputs. Determining this is the task itself. What the workflow does constrain is the discipline around that investigation. The agent is required to select and record its targets before writing code, to prefer targets that lie on shared execution paths so that a single cycle can unlock several affected lines at once, to note and skip lines it judges structurally unreachable rather than spending further cycles on them, and to prioritize debugging over new construction whenever its previous script failed to execute.
-
-\subsection{Seed Generation}
-\label{sec:agent-generation}
-
-Given this environment, the agent follows an iterative corpus-augmentation procedure. It first examines the source tree and the corpus to identify the expected input format, the parsing and validation logic that inputs must survive, and the conditions that guard the paths leading to the uncovered affected lines. It then writes a Python script that produces new seed files in the corpus directory.
- 
-The agent, therefore, does not emit seeds directly, but a program that emits them. This indirection follows the design adopted by prior \ac{LLM}-based seed-generation work~\cite{zhuSeedSmithLLMDrivenSeed2026,xuISC4DGFEnhancingDirected2024,fengFuzzingRandomnessReasoning2025} and is motivated by two considerations. First, it raises the level of abstraction: emitting raw bytes or hexadecimal literals token by token is error-prone and scales poorly to inputs with dependent fields, whereas a script can express structure explicitly, compute length and offset fields from the data they describe, and emit families of related inputs from a single parameterized construction. Second, it grants access to Python's standard library, so that checksums, compression, encoding, and arithmetic transformations, which are frequently required to pass format validation, can be computed correctly rather than approximated by the model. Generators are restricted to the standard library, both to keep the execution environment reproducible and to prevent the agent from delegating input construction to an existing format library rather than deriving the format from the program.
- 
-Each cycle produces a new script, named \texttt{seed\_gen\_cycle\_N.py}, rather than an edit of the previous one. This follows from the persistence of the corpus directory: because the seeds of earlier cycles are already on disk, a script never needs to be re-run, and revising it would risk regressing constructions that previously worked. Each script is therefore responsible only for the seeds of its own cycle, and the sequence of scripts additionally forms a readable record of how the agent's understanding of the format developed over the run.
- 
-When the agent considers its generator ready, it ends the cycle by invoking the coverage report tool with the path to the script.
-
-\subsection{Coverage Feedback}
-\label{sec:agent-feedback}
-
-The \texttt{gain\_coverage\_report\_tool} is the only means by which the agent affects the corpus and the only source of feedback it receives. It performs the following steps, corresponding to sub-steps 2.1--2.4 in \cref{fig:agent-loop}. 
- 
-First, the generator script is executed in an isolated working directory under a wall-clock timeout. The execution fails if the script contains a syntax error, raises an exception, exceeds the timeout, produces no files, produces more files than the configured limit, or produces files exceeding the configured maximum size. In all of these cases, the tool returns a failure message describing the cause, including the interpreter traceback when available, and the corpus remains unchanged. The file count and size limits prevent the agent from replacing targeted construction with bulk generation, which would both defeat the corpus-size objective of \cref{sec:design-goals} and shift the burden back onto the fuzzer.
- 
-Second, on success, the generated files are added to the corpus. We retain all generated seeds, including those that contribute no additional affected-code coverage. A seed that fails to reach affected code may still be structurally valid and lie closer to it in the mutation space than anything already present, and thus remain a useful starting point for the fuzzer even though it is not credited by the coverage signal.
- 
-Third, the resulting corpus is executed on the coverage-instrumented binary, and its line coverage is aggregated across all seeds and intersected with the affected slice. The annotated source tree in the workspace is rewritten in place to reflect this new state, so that the agent's view of the program remains consistent with the corpus it has produced.
- 
-Finally, a coverage report is returned to the agent, as shown in Figure~\cref{fig:coverage-report}. Rather than restating the full coverage state, it is formulated as a delta: it reports which affected lines the cycle newly covered and which remain uncovered, together with the resulting \ac{CACC}. The list of still-uncovered lines is the input to the target-selection step of the next cycle.
-
-\input{figures/agent_coverage_feedback}
- 
-Both the report and the source annotation describe the corpus as a whole rather than individual seeds. This is a deliberate trade-off in favor of context efficiency: per-seed reports would grow with every cycle and quickly dominate the context window, whereas an aggregate report has a constant size regardless of how many seeds the corpus contains. The cost is a coarser signal: the agent learns whether its most recent batch increased coverage, but not which specific input caused the increase.
+A run consists of cycles, each ending with one call of the coverage feedback tool (\cref{sec:agent-feedback}).
+The prompt does not fix the agent's actions, but runs usually follow the workflow in \cref{fig:agent-workflow}.
+The agent starts from the initial prompt, which contains the task description and the initial coverage report.
+It first picks a target region: a group of uncovered affected lines on a shared execution path, which it logs in its to-do list (1).
+It then analyzes how the \ac{SUT} parses its input and inspects the reference seeds in the corpus (2).
+Based on this analysis, it writes a new seed generator script (3) and passes it to \texttt{gain\_coverage\_report\_tool} (4), which ends the cycle.
+The returned coverage delta decides the next cycle.
+If the new seeds covered previously uncovered lines, the agent returns to step~1 and picks the next target.
+If the script failed or yielded no gain, the agent fixes or adapts the script (5), optionally gathers further context, and resubmits it.
 
 \subsection{Termination}
 \label{sec:agent-termination}
 
-The agent repeats this cycle, revising its generator in response to each report, until one of two budgets is exhausted. The first is a cycle budget that bounds the number of \texttt{get\_coverage\_report} invocations, analogous to the epoch count used during model training. The second is a token budget with soft and hard limits: upon reaching the soft limit, the agent may finalize its current generator and terminate the run; upon reaching the hard limit, the run terminates unconditionally. The soft limit exists so that a run ending on budget still ends after a completed cycle rather than mid-revision. If the agent ends its iteration before the budget is reached, it is prompted to continue executing until the budget is exhausted.
+The agent cannot end a run on its own; the run ends when one of two budgets is exhausted.
+The first is a cycle budget that bounds the number of \texttt{gain\_coverage\_report\_tool} invocations, analogous to the epoch count in model training.
+The second is a token budget with soft and hard limits.
+Upon reaching the soft limit, the harness waits for the agent to finalize its current generator so that a run ending on budget still completes a cycle rather than mid-revision; upon reaching the hard limit, the run terminates unconditionally.
+If the agent stops iterating before a budget is exhausted, it is prompted to continue.
 
 The working corpus as of the last successful cycle constitutes the final augmented corpus $C^*$, which serves as the starting corpus for the regression-fuzzing campaign.
+
+\subsection{Task Specification}
+\label{sec:agent-prompt}
+
+The agent's task is specified through an initial prompt, shown in \cref{fig:agent-prompt}.
+It states the objective, defines a cycle, introduces the coverage-marker legend of the annotated source tree (\cref{sec:agent-workspace}), fixes the persistence contract for generated seeds, describes the two feedback formats, prescribes the per-cycle workflow, and constrains the shape of the generator script.
+These parts are highlighted in the figure.
+A final per-run message binds the cycle budget and the concrete workspace paths, and carries the initial coverage summary, which lists the affected lines that remain uncovered by the reference corpus.
+
+\input{figures/agent_prompt.tex}
+
+The prompt was not derived analytically but refined in an iterative pilot phase.
+We ran the agent on the open-source projects \emph{readstat} and \emph{libhtp}, inspected the transcripts, and revised the specification whenever a systematic deviation from the intended workflow appeared.
+The most notable deviations were generating inputs blindly without inspecting the corpus and codebase, producing generator scripts incompatible with the harness, and fixating on a small, hard-to-reach fraction of the code.
+Iteration stopped once no such deviation recurred across many consecutive pilot runs.
+The prompt was then frozen and used verbatim for every run in \cref{chapter:evaluation}, without per-project or per-arm adaptation.
+We make no claim that this formulation is optimal, only that it is identical across arms, so that observed differences are attributable to the starting corpus rather than to the instructions.
+
+Beyond this specification, the prompt prescribes no strategy: it does not tell the agent which files to read, in which order to investigate the program, or how to construct inputs.
+Determining this is the task itself.
+The workflow instead constrains the discipline around the investigation.
+The agent must select and record its targets before writing code; prefer targets on shared execution paths so that a single cycle can unlock several affected lines; note and skip lines it judges structurally unreachable; and prioritize debugging over new construction whenever its previous script failed.
+
+To keep the agent focused over this long-horizon task and counter context drift, the progressive degradation of agent behavior and decision quality over extended interactions~\cite{rathAgentDriftQuantifying2026}, the default \texttt{deepagents} harness provides a to-do list tool (\texttt{write\_todos}).
+With it, the agent records its plan as discrete steps and marks each as pending, in progress, or completed.
+Because the current list is returned on every update, the plan stays in the recent context rather than being buried under the growing history of tool calls, allowing the agent to re-anchor on its goal after long subtasks and revise the plan when the original decomposition no longer fits.
+
+\subsection{Agent Harness}
+\label{sec:agent-harness}
+
+The harness is the surrounding program that maintains the conversation state, exposes the tools to the model, executes the tool calls it emits, and returns their results (\cref{chapter:background}).
+We use the LangGraph \texttt{deepagents} harness~\cite{DeepAgentsOpen} as our base: it is open-source, easy to extend with custom tools, and model-agnostic, so the same pipeline runs with different \acp{LLM} without modification.
+We extend it with the workspace, the toolset, and the coverage feedback tool described below, while leaving its planning and file-editing behavior unchanged.
+Its base system prompt is reproduced in Appendix~\ref{appendix:deepagents_prompt}.
+
+Interaction length is not a limiting factor in practice.
+Current context windows accommodate the source excerpts, coverage reports, and generator revisions accumulated over a full run.
+Should the limit nevertheless be approached, the harness summarizes the conversation history and continues from the summary, so that a run is bounded by the budgets of \cref{sec:agent-termination} rather than by the context window.
+
+\subsection{Workspace}
+\label{sec:agent-workspace}
+
+The agent operates on a workspace file system rather than on content injected into its prompt.
+This leaves the amount of material in the context window under the agent's control: it decides which files to open and how much of them to read.
+The layout is shown in \cref{fig:agent-loop}.
+
+The workspace contains two given artifacts and one that the agent produces.
+The first is the corpus directory, initialized with the distilled corpus (\cref{sec:distilling-corpus}).
+It serves both as the reference from which the agent infers the expected input format and as the working corpus to which generated seeds are added, so seeds written in one cycle persist and remain visible in all subsequent ones.
+The second is the source tree of the \ac{SUT}, including the fuzzing harness.
+The harness entry point, in our case \texttt{LLVMFuzzerTestOneInput}, determines which parts of the program an input can reach, so exposing it lets the agent reason about the actual interface it generates inputs for.
+The third is the generator script, which the agent writes to the workspace root.
+
+\input{figures/agent_annotated_source_code}
+
+The source tree is annotated with the current coverage state (\cref{fig:annotated-source}).
+Each line carries two prefixes: \texttt{[A]} marks lines in the commit-affected slice (\cref{sec:affected-code}), and \texttt{[C]}, \texttt{[P]}, or \texttt{[.]} marks the line as covered, partially covered, or uncovered.
+These states are derived from region coverage: a line is \texttt{[C]} if all of its regions were executed, \texttt{[.]} if none were, and \texttt{[P]} otherwise, for instance under short-circuit evaluation or when a condition is evaluated but the body on the same line is not entered.
+Plain line coverage would report such a line as covered and hide the unexplored outcome, whereas marking it uncovered would wrongly suggest that no seed reaches it; the third state avoids both without requiring the agent to map a full region report onto source lines.
+Coverage is aggregated over the corpus, so \texttt{[C]} means that some seed covers the line, not that a single seed follows the surrounding path.
+
+The agent is instructed to target \texttt{[A][.]} lines first, then \texttt{[A][P]} lines, and to ignore all others.
+Uncovered lines promise greater gains because no seed reaches them, and they are typically guarded by a \texttt{[P]} condition that a seed reaching them resolves as a side effect.
+Partial lines are therefore addressed only once the uncovered targets are exhausted or appear unreachable.
+
+Embedding coverage in the source, as in SeedMind~\cite{shiHarnessingLargeLanguage2024}, allows the agent to read each remaining target along with the code that determines how to reach it.
+The initial annotation reuses the coverage from the distillation step, where the reference corpus was already executed on the instrumented binary: per-region execution counts are exported with \texttt{llvm-cov export}, reduced to the three line states, and prefixed to each line of the affected files.
+After each cycle, the markers are rewritten in place, so code and line numbers remain stable across cycles.
+
+The agent explores the workspace through the harness's file system tools.
+The tool set is kept minimal, since recent work has shown that exposing many tools degrades an \ac{LLM}'s ability to select the right one~\cite{paramanayakamLessMoreOptimizing2025, repantisHowManyTools2026}.
+From the standard \texttt{deepagents} tools, directories are traversed with \texttt{ls} and \texttt{glob}, files are read with \texttt{read\_file}, and \texttt{grep} locates identifiers, constants, or format strings across the tree.
+Because seeds are frequently binary, we add \texttt{hexdump}, \texttt{strings}, and \texttt{file\_type}, which let the agent inspect the byte-level structure of reference seeds, identify headers and length fields, recover embedded textual markers, and determine the kind of input a seed represents.
+\texttt{write\_file} is used only for the generator script.
+
+\subsection{Seed Generation}
+\label{sec:agent-generation}
+
+Once the agent has identified the input format, the validation logic inputs must survive, and the conditions guarding its target lines must be met; it then writes a Python script that produces new seed files in the corpus directory.
+The agent thus emits a program that emits seeds, rather than the seeds themselves.
+This follows prior \ac{LLM}-based seed-generation work~\cite{zhuSeedSmithLLMDrivenSeed2026,xuISC4DGFEnhancingDirected2024,fengFuzzingRandomnessReasoning2025} and has two advantages.
+First, it raises the level of abstraction: emitting raw bytes token by token is error-prone and scales poorly to inputs with dependent fields, whereas a script can explicitly express structure, compute length and offset fields from the data they describe, and emit families of related inputs from a single parameterized construction.
+Second, checksums, compression, encoding, and arithmetic transformations, frequently required to pass format validation, are computed correctly by Python's standard library rather than approximated by the model.
+Generators are restricted to the standard library, both to keep the execution environment reproducible and to prevent the agent from delegating input construction to an existing format library instead of deriving the format from the program.
+
+Each cycle produces a new script, \texttt{seed\_gen\_cycle\_N.py}, rather than an edit of the previous one.
+Because the seeds of earlier cycles already persist in the corpus, a script never needs to be re-run, and revising it would risk regressing constructions that previously worked.
+Each script is therefore responsible only for the seeds of its own cycle, and the sequence of scripts forms a readable record of how the agent's understanding of the format developed.
+When the generator is ready, the agent ends the cycle by passing the script path to the coverage feedback tool.
+
+\subsection{Coverage Feedback}
+\label{sec:agent-feedback}
+
+\texttt{gain\_coverage\_report\_tool} is the only means by which the agent affects the corpus and its only source of feedback.
+It performs four steps, corresponding to sub-steps 2.1--2.4 in \cref{fig:agent-loop}.
+
+First, the generator script is executed in an isolated working directory under a wall-clock timeout.
+Execution fails if the script contains a syntax error, raises an exception, exceeds the timeout, produces no files, or exceeds the configured limits on file count or file size.
+In these cases, the tool returns a failure message stating the cause, including the interpreter traceback when available, and the corpus remains unchanged.
+The count and size limits prevent the agent from replacing targeted construction with bulk generation, which would defeat the corpus-size objective of \cref{sec:design-goals} and shift the burden back onto the fuzzer.
+
+Second, on success, all generated files are added to the corpus, including those that contribute no additional affected-code coverage.
+Such a seed may still be structurally valid and lie closer to the affected code in the mutation space than any existing seed, making it a useful starting point for the fuzzer.
+
+Third, the resulting corpus is executed on the coverage-instrumented binary, its line coverage is aggregated across all seeds and intersected with the affected slice, and the annotated source tree is rewritten in place to reflect the new state.
+
+Finally, the tool returns a coverage report (\cref{fig:coverage-report}).
+Rather than restating the full coverage state, it reports a delta: the affected lines newly covered in this cycle, those that remain uncovered, and the resulting \ac{CACC}.
+The list of still-uncovered lines is the input to the target selection of the next cycle.
+
+\input{figures/agent_coverage_feedback}
+
+Both the report and the source annotation describe the corpus as a whole rather than individual seeds.
+This trades signal granularity for context efficiency: per-seed reports would grow with every cycle and quickly dominate the context window, whereas an aggregate report has a constant size regardless of corpus size.
+The agent thus learns whether its most recent batch increased coverage, but not which input caused the increase.

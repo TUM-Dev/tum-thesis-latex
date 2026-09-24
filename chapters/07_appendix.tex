@@ -1,14 +1,85 @@
 \chapter{Distillation Elbow Threshold}
 \label{appendix:distill_elbow_curves}
 
-\begin{figure}[p]
+\begin{figure}[H]
   \centering
-  \includegraphics[width=\textwidth]{figures/distillation-cacc-curves.pdf}
-  \caption[CACC vs.\ corpus size for the FULL distilled corpora]{%
-    Commit-affected code coverage against evaluated corpus size, one tile per project.
-    The filled marker is the corpus step~3 selected; the dashed rule is the first
-    grid step whose relative gain fell below 2\%.}
+  \includegraphics[width=\textwidth,height=0.65\textheight,keepaspectratio]{figures/distillation-cacc-curves.pdf}
+  \caption{Commit-affected code coverage against evaluated corpus seed budget.}
   \label{fig:distillation-cacc-curves}
 \end{figure}
 
 \include{figures/deepagent_prompt}
+
+% This table needs the document preamble to load: \usepackage{booktabs}, \usepackage{multirow}.
+\chapter{Termination and Cost of Augmentation Runs}
+
+An augmentation run terminates either when it reaches the cap of \num{20} cycles or when it exhausts its budget.
+\Cref{tab:termination-campaigns} reports this for the pipeline configuration study runs, and \cref{tab:termination-fuzzing} for the runs that seeded the fuzzing study.
+Spend and token counts are cumulative at a run's last valid cycle, and in \cref{tab:termination-campaigns} they are medians over each cell's runs; tokens are given in millions, and input excludes cached input.
+All runs used \texttt{deepseek-v4-flash}.
+The tuning set was priced at \$\num{0.14} (input), \$\num{0.0028} (cached input), and \$\num{0.28} (output) per million tokens.
+From 16~August~2026, when the held-out set was run, the off-peak prices rose to \$\num{0.22}, \$\num{0.007}, and \$\num{0.66}, respectively.
+Therefore, the soft/hard budget was raised from \$\num{0.30}/\$\num{0.40} to \$\num{0.45}/\$\num{0.50} so that the held-out runs had the same termination profile as the tuning runs.
+
+\begin{table}[!b]
+  \centering
+  \scriptsize
+  \setlength{\tabcolsep}{3pt}
+  \renewcommand{\arraystretch}{0.9}
+  \begin{tabular}{llccrrrr}
+    \toprule
+       &  &  &  &  & \multicolumn{3}{c}{\textbf{Tokens (M)}} \\
+      \cmidrule(lr){6-8}
+      \textbf{Project} & \textbf{Config} & \textbf{Cap reached} & \textbf{Lowest cycle} & \textbf{Spend (\$)} & \textbf{Input} & \textbf{Cached} & \textbf{Output} \\
+    \midrule
+      \multirow{4}{*}{curl} & Empty & 3/5 & 17 & 0.252 & 0.26 & 54.05 & 0.25 \\
+       & Original & 4/5 & 18 & 0.278 & 0.29 & 61.42 & 0.21 \\
+       & Distilled & 3/5 & 17 & 0.284 & 0.29 & 65.31 & 0.21 \\
+       & Distilled (CoI10) & 1/5 & 16 & 0.306 & 0.50 & 60.50 & 0.24 \\
+      \multirow{4}{*}{libhtp} & Empty & 5/5 & 20 & 0.193 & 0.25 & 37.08 & 0.19 \\
+       & Original & 4/5 & 17 & 0.215 & 0.26 & 39.78 & 0.24 \\
+       & Distilled & 4/5 & 16 & 0.262 & 0.55 & 43.54 & 0.25 \\
+       & Distilled (CoI10) & 5/5 & 20 & 0.135 & 0.19 & 16.29 & 0.27 \\
+      \multirow{4}{*}{libxml2} & Empty & 5/5 & 20 & 0.189 & 0.18 & 33.28 & 0.27 \\
+       & Original & 5/5 & 20 & 0.175 & 0.15 & 34.92 & 0.27 \\
+       & Distilled & 5/5 & 20 & 0.175 & 0.15 & 31.41 & 0.24 \\
+       & Distilled (CoI10) & 5/5 & 20 & 0.188 & 0.16 & 33.97 & 0.23 \\
+      \multirow{4}{*}{pcap++} & Empty & 4/5 & 14 & 0.300 & 0.30 & 56.10 & 0.24 \\
+       & Original & 4/5 & 18 & 0.239 & 0.25 & 50.12 & 0.23 \\
+       & Distilled & 5/5 & 20 & 0.257 & 0.51 & 49.85 & 0.23 \\
+       & Distilled (CoI10) & 5/5 & 20 & 0.243 & 0.24 & 53.57 & 0.18 \\
+      \multirow{4}{*}{readstat} & Empty & 5/5 & 20 & 0.138 & 0.20 & 12.95 & 0.29 \\
+       & Original & 5/5 & 20 & 0.205 & 0.30 & 25.96 & 0.38 \\
+       & Distilled & 5/5 & 20 & 0.206 & 0.24 & 26.78 & 0.35 \\
+       & Distilled (CoI10) & 5/5 & 20 & 0.139 & 0.21 & 14.14 & 0.25 \\
+      \multirow{4}{*}{zstd} & Empty & 3/5 & 11 & 0.266 & 0.21 & 53.23 & 0.32 \\
+       & Original & 3/5 & 15 & 0.265 & 0.26 & 54.26 & 0.27 \\
+       & Distilled & 2/5 & 14 & 0.300 & 0.24 & 58.68 & 0.31 \\
+       & Distilled (CoI10) & 2/5 & 15 & 0.300 & 0.37 & 47.07 & 0.40 \\
+      \midrule
+      \multirow{4}{*}{\textit{All projects}} & Empty & 25/30 & 11 & 0.225 & 0.23 & 44.94 & 0.27 \\
+       & Original & 25/30 & 15 & 0.240 & 0.26 & 45.34 & 0.25 \\
+       & Distilled & 24/30 & 14 & 0.242 & 0.25 & 44.04 & 0.25 \\
+       & Distilled (CoI10) & 23/30 & 15 & 0.216 & 0.23 & 43.44 & 0.24 \\
+    \bottomrule
+  \end{tabular}
+  \caption{Termination and cost of the configuration study augmentation runs.}\label{tab:termination-campaigns}
+  \vspace{0.8em}
+  \begin{tabular}{lrrrrr@{\hspace{1.5em}}lrrrrr}
+    \toprule
+      \multicolumn{6}{c}{\textbf{Tuning set} (budget \$0.30/0.40)} & \multicolumn{6}{c}{\textbf{Held-out set} (budget \$0.45/0.50)} \\
+      \cmidrule(lr){1-6} \cmidrule(lr){7-12}
+      \textbf{Project} & \textbf{Cycle} & \textbf{Spend (\$)} & \textbf{Input} & \textbf{Cached} & \textbf{Output} & \textbf{Project} & \textbf{Cycle} & \textbf{Spend (\$)} & \textbf{Input} & \textbf{Cached} & \textbf{Output} \\
+    \midrule
+      curl & 20 & 0.235 & 0.23 & 47.87 & 0.24 & harfbuzz & 20 & 0.275 & 0.20 & 58.48 & 0.30 \\
+      libhtp & 20 & 0.248 & 0.27 & 49.55 & 0.25 & ndpi & 20 & 0.447 & 0.79 & 76.42 & 0.44 \\
+      libxml2 & 20 & 0.175 & 0.14 & 31.41 & 0.24 & openssl & 20 & 0.137 & 0.12 & 24.23 & 0.19 \\
+      pcap++ & 20 & 0.294 & 0.59 & 49.85 & 0.26 & poppler & 20 & 0.212 & 0.18 & 40.04 & 0.27 \\
+      readstat & 20 & 0.285 & 0.35 & 32.32 & 0.52 & usrsctp & 20 & 0.264 & 0.26 & 59.71 & 0.21 \\
+      zstd & 17$^\dagger$ & 0.301 & 0.25 & 58.68 & 0.36 & yara & 20 & 0.312 & 0.46 & 54.71 & 0.34 \\
+      \midrule
+      \textit{Median} & 20 & 0.267 & 0.26 & 48.71 & 0.26 & \textit{Median} & 20 & 0.270 & 0.23 & 56.59 & 0.28 \\
+    \bottomrule
+  \end{tabular}
+  \caption{Termination and cost of the augmentation runs seeding the fuzzing study.}\label{tab:termination-fuzzing}
+\end{table}

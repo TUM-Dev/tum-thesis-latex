@@ -1,0 +1,197 @@
+\colorlet{dsseed}{black!65}
+\colorlet{dsoff}{black!30}
+% common content height of the small boxes (invisible bounding points)
+\def\dsrow{\path (0.5,-0.40) (0.5,0.52);}
+\def\boxpad{6pt}
+
+\begin{figure}
+  \centering
+  \begin{tikzpicture}[
+      font=\footnotesize,
+      >={Stealth[length=5pt]},
+      %% ---------------- icons ------------------------------------------ %%
+      pics/seed/.style={code={
+        \filldraw[draw=#1,fill=#1!12,line width=0.5pt,line join=round]
+          (-0.14,-0.19) -- (-0.14,0.19) -- (0.05,0.19) -- (0.14,0.10)
+          -- (0.14,-0.19) -- cycle;
+        \draw[#1,line width=0.4pt] (0.05,0.19) -- (0.05,0.10) -- (0.14,0.10);
+        \draw[#1!70,line width=0.35pt]
+          (-0.08,0.03) -- (0.08,0.03) (-0.08,-0.04) -- (0.08,-0.04)
+          (-0.08,-0.11) -- (0.03,-0.11);}},
+      pics/chip/.style={code={
+        \foreach \t in {-0.08,0.00,0.08} {
+          \draw[#1,line width=0.5pt] (-0.16,\t) -- (-0.23,\t) (0.16,\t) -- (0.23,\t)
+                                     (\t,0.16) -- (\t,0.23) (\t,-0.16) -- (\t,-0.23);}
+        \filldraw[draw=#1,fill=#1!12,line width=0.6pt,rounded corners=1pt]
+          (-0.16,-0.16) rectangle (0.16,0.16);
+        \draw[#1,line width=0.5pt,rounded corners=0.5pt]
+          (-0.07,-0.07) rectangle (0.07,0.07);}},
+      pics/gear/.style={code={
+        \foreach \a in {0,45,...,315}
+          \filldraw[draw=#1,fill=#1!25,line width=0.4pt]
+            (\a-9:0.10) -- (\a-7:0.19) -- (\a+7:0.19) -- (\a+9:0.10) -- cycle;
+        \filldraw[draw=#1,fill=#1!12,line width=0.5pt] (0,0) circle (0.125);
+        \filldraw[draw=#1,fill=white,line width=0.4pt] (0,0) circle (0.05);}},
+      %% ---------------- boxes ------------------------------------------ %%
+      stage/.style={draw=TUMBlue, fill=TUMBlue!7, rounded corners=2pt,
+        inner sep=\boxpad},
+      io/.style={stage, draw=black!55, fill=black!4},
+      dcap/.style={font=\scriptsize, text=black!75, inner sep=0pt, anchor=north},
+      flow/.style={->, thick, draw=black!70},
+      mini/.style={->, draw=black!60, line width=0.5pt,
+        >={Stealth[length=3pt]}},
+      stagenum/.style={circle, fill=TUMBlue, text=white, font=\scriptsize\bfseries,
+        inner sep=1.2pt, minimum size=11pt},
+      cell/.style={fill=TUMBlue!65},
+      kbadge/.style={draw=TUMBlue!70, fill=white, rounded corners=1pt,
+        font=\scriptsize, minimum height=0.30cm, minimum width=0.34cm,
+        inner sep=1pt},
+    ]
+    %% Every box is sized by its content plus the same padding (boxpad).
+    %% The small boxes share one content height (\dsrow), so their padding
+    %% is identical on all four sides. Neighbours are 0.7cm apart; the
+    %% bottom row reuses the columns of the top row.
+    %% ================================================================== %%
+    %% Row 1: measure and reduce
+    %% ================================================================== %%
+    % reference corpus S
+    \node[io] (corpus) at (0,0) {\tikz[sharp corners,every node/.append style={anchor=center}]{\dsrow
+      \foreach \x in {0,0.34,0.68,1.02,1.36,1.70} \pic at (\x,0.26) {seed=dsseed};
+      \node[font=\scriptsize] at (0.85,-0.20) {$S$, $n$ seeds};}};
+
+    % coverage replay: every seed once on a coverage build
+    \node[stage, right=0.7cm of corpus] (replay) {\tikz[sharp corners,every node/.append style={anchor=center}]{\dsrow
+      \pic at (0,0.26) {seed=dsseed};
+      \draw[mini] (0.20,0.26) -- (0.44,0.26);
+      \pic[scale=1.15] at (0.72,0.26) {chip=TUMBlue};
+      \draw[mini] (1.00,0.26) -- (1.24,0.26);
+      \fill[cell] (1.28,0.18) rectangle ++(0.16,0.16);
+      \node[font=\scriptsize,text=TUMBlue!80!black] at (0.65,-0.20) {$\times n$};}};
+
+    % coverage matrix of the running example: row j = affected line a_j,
+    % column i = seed s_i, filled cell = s_i covers a_j
+    \node[io, right=0.7cm of replay] (cov) {\tikz[sharp corners,every node/.append style={anchor=center}]{
+      \fill[white] (0,0) rectangle (2.16,1.8);
+      \foreach \r/\row in {0/{1,1,0,1,0,0}, 1/{1,1,0,1,0,0}, 2/{0,1,1,0,0,1},
+                           3/{0,0,0,0,0,0}, 4/{1,0,0,1,1,0}} {
+        \foreach \v [count=\c from 0] in \row {
+          \ifnum\v=1
+            \fill[cell] (0.36*\c, 1.44-0.36*\r) rectangle ++(0.36,0.36);
+          \fi
+        }
+      }
+      \draw[black!45, step=0.36] (0,0) grid (2.16,1.8);
+      \foreach \r [count=\j from 1] in {0,...,4}
+        \node[anchor=east, inner sep=1pt] at (-0.04, 1.62-0.36*\r) {$a_{\j}$};
+      \foreach \c [count=\i from 1] in {0,...,5}
+        \node[anchor=south, inner sep=1pt] at (0.18+0.36*\c, 1.84) {$s_{\i}$};
+      \node[anchor=south, inner sep=1pt] at (1.08, 2.12) {seeds};
+      \node[rotate=90, anchor=south, inner sep=1pt] at (-0.42, 0.9) {affected lines};
+      \fill[cell] (0.02,-0.42) rectangle ++(0.2,0.2);
+      \node[anchor=west, inner sep=1pt] at (0.26,-0.32) {$s_i$ covers $a_j$};}};
+
+    % affected lines A, centred above the matrix
+    \node[io, above=0.4cm of cov] (affected) {\tikz[baseline=-0.6ex,sharp corners]{
+        \filldraw[draw=black!45,fill=white,rounded corners=1pt,line width=0.4pt]
+          (-0.28,-0.26) rectangle (0.28,0.26);
+        \foreach \y/\l/\hi in {0.16/0.36/0, 0.06/0.30/1, -0.04/0.40/1,
+                               -0.14/0.24/0} {
+          \ifnum\hi=1
+            \fill[TUMBlue!65] (-0.25,\y-0.045) rectangle (0.25,\y+0.045);
+          \fi
+          \draw[black!55,line width=1.1pt,line cap=round] (-0.20,\y) -- ++(\l,0);
+        }}\hspace{6pt}affected lines $A$};
+
+    % exact reduction: identical lines merge (weight), identical seeds drop
+    \node[stage, right=0.7cm of cov] (reduce) {\tikz[sharp corners,every node/.append style={anchor=center}]{\dsrow
+      %   lines: two identical rows -> one row of weight 2
+      \foreach \y in {0.315,0.175} \foreach \v [count=\c from 0] in {1,1,0} {
+        \ifnum\v=1 \fill[cell] (0.17*\c,\y) rectangle ++(0.17,0.13); \fi
+        \draw[black!45] (0.17*\c,\y) rectangle ++(0.17,0.13);
+      }
+      \draw[mini] (0.60,0.31) -- (0.86,0.31);
+      \foreach \v [count=\c from 0] in {1,1,0} {
+        \ifnum\v=1 \fill[cell] (0.95+0.17*\c,0.245) rectangle ++(0.17,0.13); \fi
+        \draw[black!45] (0.95+0.17*\c,0.245) rectangle ++(0.17,0.13);
+      }
+      \node[anchor=west,font=\scriptsize\bfseries,text=TUMBlue!80!black,
+            inner sep=1pt] at (1.48,0.31) {$\times2$};
+      %   seeds: two identical columns -> one
+      \foreach \x/\o in {0.08/1,0.30/0.35} \foreach \v [count=\r from 0] in {1,0,1} {
+        \ifnum\v=1 \fill[cell,opacity=\o] (\x,-0.13-0.13*\r) rectangle ++(0.17,0.13); \fi
+        \draw[black!45,opacity=\o] (\x,-0.13-0.13*\r) rectangle ++(0.17,0.13);
+      }
+      \draw[black!75,line width=0.7pt] (0.28,-0.40) -- (0.49,0.03)
+                                       (0.28,0.03) -- (0.49,-0.40);
+      \draw[mini] (0.60,-0.19) -- (0.86,-0.19);
+      \foreach \v [count=\r from 0] in {1,0,1} {
+        \ifnum\v=1 \fill[cell] (0.95,-0.13-0.13*\r) rectangle ++(0.17,0.13); \fi
+        \draw[black!45] (0.95,-0.13-0.13*\r) rectangle ++(0.17,0.13);
+      }}};
+
+    %% ================================================================== %%
+    %% Row 2: optimise and select (same columns as row 1)
+    %% ================================================================== %%
+    \coordinate (row2) at (0,-3.35);
+
+    % CP-SAT, one solve per bound k
+    \node[stage] (solve) at (reduce |- row2) {\tikz[sharp corners,every node/.append style={anchor=center}]{\dsrow
+      \pic[scale=1.2] at (0.20,0.26) {gear=TUMBlue};
+      \node[anchor=west,font=\footnotesize\bfseries,text=TUMBlue!80!black,
+            inner sep=0pt] at (0.54,0.26) {CP-SAT};
+      \node[font=\scriptsize,inner sep=0pt] (klbl) at (0.06,-0.20) {$k$};
+      \node[kbadge,right=0.10cm of klbl] (k1) {1};
+      \node[kbadge,right=0.06cm of k1] (k2) {5};
+      \node[kbadge,right=0.06cm of k2] (k3) {10};
+      \node[font=\scriptsize,inner sep=0pt,right=0.06cm of k3] {$\cdots$};}};
+
+    % distilled corpus: k_t of the n seeds (column of "coverage replay")
+    \node[io] (distilled) at (replay |- row2) {\tikz[sharp corners,every node/.append style={anchor=center}]{\dsrow
+      \foreach \x/\c in {0/TUMAccentOrange, 0.34/TUMAccentOrange, 0.68/dsoff,
+                         1.02/dsoff, 1.36/dsoff, 1.70/dsoff}
+        \pic at (\x,0.26) {seed=\c};
+      \node[font=\scriptsize] at (0.85,-0.20) {$k_t$ of $n$ seeds};}};
+
+    % f(k): covered weight per bound, elbow at k_t (centred between its neighbours)
+    \begin{scope}[shift={($($(distilled.east)!0.5!(solve.west)$)+(-1.25,-0.7)$)}]
+      \draw[->, black!70] (0,0) -- (2.5,0) node[below left=1pt and -2pt] {$k$};
+      \draw[->, black!70] (0,0) -- (0,1.45) node[above] {$f(k)$};
+      \draw[TUMBlue, thick]
+        plot coordinates {(0.08,0.40) (0.40,0.80) (0.80,0.98) (1.20,1.09)
+                          (1.60,1.13) (2.00,1.15) (2.40,1.16)};
+      \foreach \x/\y in {0.08/0.40, 0.40/0.80, 0.80/0.98, 1.20/1.09,
+                         2.00/1.15, 2.40/1.16}
+        \fill[TUMBlue] (\x,\y) circle (1.3pt);
+      \draw[TUMAccentOrange, dashed] (1.60,0) node[below] {$k_t$} -- (1.60,1.13);
+      \fill[TUMAccentOrange] (1.60,1.13) circle (2.1pt)
+        node[above=1pt, font=\scriptsize, text=TUMAccentOrange] {elbow};
+      \coordinate (curveE) at (2.75,0.7);
+      \coordinate (curveW) at (-0.25,0.7);
+    \end{scope}
+
+    %% ---------------- captions (same offset below every box) ---------- %%
+    \foreach \n/\t in {corpus/reference corpus, replay/coverage replay,
+                       reduce/exact reduction, solve/one solve per bound,
+                       distilled/distilled corpus}
+      \node[dcap] at ($(\n.south)+(0,-0.12)$) {\t};
+
+    %% ================================================================== %%
+    %% Flow
+    %% ================================================================== %%
+    \draw[flow] (corpus) -- (replay);
+    \draw[flow] (replay) -- (replay -| cov.west);
+    \draw[flow] (affected) -- (cov);
+    \draw[flow] (reduce -| cov.east) -- (reduce);
+    \draw[flow] ($(reduce.south)+(0,-0.45)$) --
+      node[right, font=\scriptsize] {weighted} (solve);
+    \draw[flow] (solve) -- (curveE |- solve);
+    \draw[flow] (curveW |- distilled) -- (distilled);
+
+    %% ---------------- stage markers ----------------------------------- %%
+    \node[stagenum] at (replay.north west)    {1};
+    \node[stagenum] at (solve.north west)     {2};
+    \node[stagenum] at (distilled.north west) {3};
+  \end{tikzpicture}
+  \caption{Overview of corpus distillation.}
+  \label{fig:distillation-overview}
+\end{figure}

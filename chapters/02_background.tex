@@ -61,8 +61,7 @@ allowing the fuzzer to spend most of its computational resources on executing
 numerous inputs against the \ac{SUT}, mutation-based fuzzing can
 require substantial time and computational resources to trigger a particular
 bug. Fuzzer evaluations are therefore recommended to run for at least
-12--24~h~\cite{kleesEvaluatingFuzzTesting2018,
-bohmeReliabilityCoveragebasedFuzzer2022, schloegelSoKPrudentEvaluation2024},
+12--24~h~\cite{klees2018, bohmeReliabilityCoveragebasedFuzzer2022, schloegelSoKPrudentEvaluation2024},
 while deployments such as OSS-Fuzz fuzz targets continuously and
 indefinitely~\cite{serebryanyOSSFuzzGooglesContinuous2017}. Returns nonetheless
 diminish as coverage approaches a plateau~\cite{dingEmpiricalStudyOSSFuzz2021},
@@ -73,14 +72,14 @@ A natural metric for this concern is the \acf{TTE}: the wall-clock time required
 for a campaign to trigger a given bug. Since fuzzing is a randomized search
 process, \ac{TTE} is not a fixed property of a target, but a distribution over
 campaigns, and is therefore typically measured across repeated
-runs~\cite{kleesEvaluatingFuzzTesting2018}. Reducing \ac{TTE} is a central goal
+runs~\cite{klees2018}. Reducing \ac{TTE} is a central goal
 of work improving greybox fuzzing, either by refining the feedback
 signal~\cite{ganCollAFLPathSensitive2018,bohmeBoostingFuzzerEfficiency2020} or by
 improving the mutation engine~\cite{lyuMOPTOptimizedMutation2019,
 aschermannREDQUEENFuzzingInputtoState2019}. An orthogonal approach is to improve
 the inputs the fuzzer starts with: the seed corpus. The initial corpus serves as
 the basis for subsequent mutation and can substantially influence the outcome of
-a fuzzing campaign~\cite{kleesEvaluatingFuzzTesting2018,
+a fuzzing campaign~\cite{klees2018,
 herreraSeedSelectionSuccessful2021}.
 
 \paragraph{What Makes a Good Seed Corpus.}
@@ -145,10 +144,14 @@ example, if a commit alters an array index, subsequent accesses using that index
 may be affected, resulting in an out-of-bounds error that may manifest later in
 the program. Xiang~et~al.~\cite{xiangCriticalCodeGuided2024} quantify this for
 commit-introduced bugs in real-world C programs, finding that the crash site
-differs from the change site in over half of the cases they study. For instance,
-\Cref{fig:pdg} shows a curl commit that rewrites a single predicate at
-line~1522; the resulting out-of-bounds write manifests eighteen lines later at
-line~1540, where the output buffer is terminated.
+differs from the change site in over half of the cases they study.
+\Cref{fig:pdg} shows such a case from curl (commit \texttt{dd7521b}, reported
+by OSS-Fuzz issue~42539533). There, \texttt{strlen\_url()} computes the size of
+the output buffer and \texttt{strcpy\_url()} fills it. The commit rewrites the
+predicate at line~1522 in the writer but leaves the identical predicate in the
+sizer unchanged, so a non-printable byte below \texttt{0x80} is budgeted one
+byte but written as three. The resulting out-of-bounds write manifests eighteen
+lines after the change, at line~1540, where the output buffer is terminated.
 
 \paragraph{Change Impact Analysis and Program Slicing.}
 Determining which parts of a program a change can affect is therefore a
@@ -273,7 +276,7 @@ may be difficult to discover through syntactic mutation alone.
 This capability is particularly relevant to fuzzing, where reaching deeper
 program logic often requires inputs to satisfy a sequence of semantic conditions
 or structural constraints. Recent approaches such as
-Cleverest~\cite{liuEvaluatingLLMBasedRegression} demonstrate the potential of
+Cleverest~\cite{liuEvaluatingLLMBasedRegression2026} demonstrate the potential of
 using \acp{LLM} to generate and mutate fuzzing inputs across different target
 languages and systems. Rather than replacing traditional fuzzing entirely,
 LLM-based generation can provide inputs that give subsequent fuzzing exploration

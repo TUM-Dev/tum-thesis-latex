@@ -1,0 +1,224 @@
+% !TeX root = ../main.tex
+% figures/agent_workflow.tex  --  included via \input{figures/agent_workflow.tex}
+%
+% Required in the preamble (same as figures/agent_loop.tex):
+%   \usepackage{tikz}
+%   \usetikzlibrary{arrows.meta,positioning,calc}
+%
+% Colours and visual vocabulary match figures/agent_loop.tex.
+% Tuned for scrbook, fontsize=11pt, paper=a4 (about 14.5cm x 5.9cm).
+% Do not scale this picture; change \wfk instead.
+
+\definecolor{alcorpus}{HTML}{D97706}
+\definecolor{alagent}{HTML}{2563EB}
+\definecolor{altool}{HTML}{475569}
+\definecolor{alprompt}{HTML}{7C3AED}
+\definecolor{alcov}{HTML}{16A34A}
+\definecolor{alaff}{HTML}{DC2626}
+
+% ---- one knob: scales geometry and text together ---------------------------
+% 1.125 -> step labels at 9pt = \footnotesize of scrbook (fontsize=11pt).
+\def\wfk{1.125}
+\pgfmathsetmacro\wfsF{8*\wfk}\pgfmathsetmacro\wfsS{7*\wfk}
+\pgfmathsetmacro\wfsT{5*\wfk}\pgfmathsetmacro\wfsSm{9*\wfk}
+\def\wfF {\fontsize{\wfsF }{1.2\dimexpr\wfsF  pt\relax}\selectfont}
+\def\wfS {\fontsize{\wfsS }{1.2\dimexpr\wfsS  pt\relax}\selectfont}
+\def\wfT {\fontsize{\wfsT }{1.2\dimexpr\wfsT  pt\relax}\selectfont}
+\def\wfSm{\fontsize{\wfsSm}{1.2\dimexpr\wfsSm pt\relax}\selectfont}
+
+\ifdefined\wftoolw\else\newlength{\wftoolw}\fi
+\settowidth{\wftoolw}{\wfS\ttfamily read\_file}
+
+\begin{figure}[htbp]
+  \centering
+  \begin{tikzpicture}[
+      scale=\wfk,
+      >={Latex[length=2.2mm,width=1.6mm]},
+      font=\wfF,
+      %% ---------------- icons (TikZ native) ---------------------------- %%
+      pics/doc/.style={code={
+        \filldraw[draw=#1,fill=#1!10,line width=0.5pt,line join=round]
+          (-0.14,-0.19) -- (-0.14,0.19) -- (0.05,0.19) -- (0.14,0.10)
+          -- (0.14,-0.19) -- cycle;
+        \draw[#1,line width=0.4pt] (0.05,0.19) -- (0.05,0.10) -- (0.14,0.10);
+        \draw[#1!75,line width=0.35pt]
+          (-0.08,0.03) -- (0.08,0.03) (-0.08,-0.04) -- (0.08,-0.04)
+          (-0.08,-0.11) -- (0.03,-0.11);}},
+      pics/folder/.style={code={
+        \filldraw[draw=#1,fill=#1!14,line width=0.5pt,line join=round]
+          (-0.21,-0.16) -- (-0.21,0.15) -- (-0.05,0.15) -- (0.00,0.09)
+          -- (0.21,0.09) -- (0.21,-0.16) -- cycle;
+        \draw[#1,line width=0.4pt] (-0.21,0.09) -- (0.00,0.09);}},
+      pics/gear/.style={code={
+        \foreach \a in {0,45,...,315} {
+          \filldraw[draw=#1,fill=#1!20,line width=0.4pt]
+            (\a-9:0.10) -- (\a-7:0.19) -- (\a+7:0.19) -- (\a+9:0.10) -- cycle;}
+        \filldraw[draw=#1,fill=#1!14,line width=0.5pt] (0,0) circle (0.125);
+        \filldraw[draw=#1,fill=white,line width=0.4pt] (0,0) circle (0.05);}},
+      pics/target/.style={code={
+        \filldraw[draw=#1,fill=#1!10,line width=0.5pt] (0,0) circle (0.19);
+        \draw[#1,line width=0.5pt] (0,0) circle (0.11);
+        \fill[#1] (0,0) circle (0.035);
+        \draw[#1,line width=0.5pt,line cap=round]
+          (-0.26,0) -- (-0.15,0) (0.15,0) -- (0.26,0)
+          (0,-0.26) -- (0,-0.15) (0,0.15) -- (0,0.26);}},
+      pics/lens/.style={code={
+        \draw[#1,line width=1.1pt,line cap=round] (0.06,-0.06) -- (0.17,-0.17);
+        \filldraw[draw=#1,fill=white,fill opacity=0.85,line width=0.6pt]
+          (-0.03,0.03) circle (0.11);}},
+      pics/pen/.style={code={
+        \filldraw[draw=#1,fill=#1!25,line width=0.45pt,line join=round]
+          (-0.13,-0.13) -- (-0.10,-0.04) -- (0.10,0.16) -- (0.16,0.10)
+          -- (-0.04,-0.10) -- cycle;
+        \fill[#1] (-0.13,-0.13) -- (-0.115,-0.085) -- (-0.085,-0.115) -- cycle;}},
+      pics/redo/.style={code={
+        \draw[#1,line width=0.8pt,->,>={Latex[length=1.1mm,width=1.0mm]}]
+          (0.15,0.02) arc (0:285:0.14);}},
+      pics/hourglass/.style={code={
+        \draw[#1,line width=0.6pt,line cap=round] (-0.12,0.17) -- (0.12,0.17)
+          (-0.12,-0.17) -- (0.12,-0.17);
+        \draw[#1,line width=0.5pt,line join=round,fill=white]
+          (-0.09,0.17) -- (0.09,0.17) -- (0.015,0.0) -- (0.09,-0.17)
+          -- (-0.09,-0.17) -- (-0.015,0.0) -- cycle;
+        \fill[#1!70] (-0.055,-0.17) -- (0.055,-0.17) -- (0,-0.07) -- cycle;
+        \fill[#1!70] (-0.035,0.09) -- (0.035,0.09) -- (0,0.02) -- cycle;}},
+      pics/check/.style={code={
+        \draw[#1,line width=1.0pt,line cap=round,line join=round]
+          (-0.08,0.00) -- (-0.02,-0.06) -- (0.09,0.07);}},
+      pics/cross/.style={code={
+        \draw[#1,line width=1.0pt,line cap=round]
+          (-0.06,-0.06) -- (0.06,0.06) (-0.06,0.06) -- (0.06,-0.06);}},
+      %% ---------------- boxes ------------------------------------------ %%
+      wfstep/.style={
+        draw=alagent, fill=alagent!8, rounded corners=3pt, line width=0.8pt,
+        minimum width=\wfk*2.2cm, minimum height=\wfk*1.7cm, inner sep=0pt},
+      toolstep/.style={wfstep, draw=altool, fill=altool!8},
+      slabel/.style={align=center, inner sep=0pt, font=\wfF,
+        text=alagent!80!black},
+      stepnum/.style={
+        circle, draw=white, fill=alagent, text=white, inner sep=0pt,
+        line width=0.6pt, minimum size=\wfk*0.46cm, font=\wfT\bfseries\sffamily},
+      promptcard/.style={
+        draw=alprompt, fill=alprompt!6, rounded corners=2pt, line width=0.8pt,
+        minimum width=\wfk*1.5cm, minimum height=\wfk*0.9cm, inner sep=0pt},
+      tag/.style={
+        text=white, font=\wfT\bfseries\sffamily,
+        rounded corners=1pt, inner sep=1.6pt, anchor=south west},
+      stopnode/.style={
+        rounded corners=\wfk*0.22cm, fill=altool!85!black, draw=altool!85!black,
+        text=white, font=\wfF\bfseries\sffamily,
+        minimum width=\wfk*1.0cm, minimum height=\wfk*0.44cm, inner sep=0pt},
+      finalbox/.style={
+        draw=alcorpus, fill=alcorpus!22, rounded corners=2pt, line width=0.8pt,
+        minimum width=\wfk*3.3cm, minimum height=\wfk*0.80cm, inner sep=0pt},
+      toolbadge/.style={
+        draw=alagent!70, fill=white, rounded corners=1.5pt, line width=0.45pt,
+        font=\wfS\ttfamily, text=alagent!80!black,
+        minimum width=\wftoolw+3pt, minimum height=\wfk*0.29cm, inner sep=1pt},
+      agentflow/.style={->, draw=alagent, line width=0.8pt},
+      toolflow/.style={->, draw=altool, line width=0.8pt},
+      promptflow/.style={->, draw=alprompt, line width=1.0pt},
+      corpusflow/.style={->, draw=alcorpus, line width=1.0pt},
+      failflow/.style={->, draw=alaff, line width=0.8pt},
+      halo/.style={preaction={draw=white, line width=3.2pt, -}},
+      lbl/.style={font=\wfS, text=altool, inner sep=1.5pt},
+    ]
+
+    %% ================================================================ %%
+    %% Start -> initial prompt (task prompt + initial coverage report)
+    %% ================================================================ %%
+    \node[stopnode] (begin) at (0.75,1.75) {Start};
+    \node[draw=alprompt,fill=alprompt!10,rounded corners=2pt,line width=0.8pt,
+          minimum width=\wfk*1.5cm,minimum height=\wfk*1.4cm,inner sep=0pt]
+      (start) at (0.75,0) {};
+    \pic[scale=0.9] at (0.25,0.33) {doc=alprompt};
+    \node[anchor=west,inner sep=0pt,font=\wfS,text=alprompt!80!black]
+      at (0.44,0.33) {prompt};
+    \draw[alprompt!35,line width=0.4pt] (0.12,0.05) -- (1.38,0.05);
+    \fill[alaff!25,rounded corners=0.5pt] (0.17,-0.52) rectangle (0.33,-0.12);
+    \fill[alcov,rounded corners=0.5pt]    (0.17,-0.52) rectangle (0.33,-0.38);
+    \node[anchor=west,align=left,inner sep=0pt,font=\wfS,text=alprompt!80!black]
+      at (0.40,-0.32) {coverage\\report};
+    \draw[->,draw=altool!85!black,line width=0.8pt] (begin.south) -- (start.north);
+
+    %% ================================================================ %%
+    %% The four workflow steps
+    %% ================================================================ %%
+    \node[wfstep] (s1) at (2.95,0) {};
+    \pic[scale=1.2] at (2.95,0.38) {target=alaff};
+    \node[slabel] at (2.95,-0.30) {Pick\\target region};
+
+    \node[wfstep] (s2) at (5.50,0) {};
+    \pic at (5.28,0.43) {folder=altool};
+    \pic at (5.62,0.31) {folder=alcorpus};
+    \pic[scale=1.1] at (5.80,0.37) {lens=alagent};
+    \node[slabel] at (5.50,-0.30) {Analyse\\SUT \& corpus};
+
+    \node[wfstep] (s3) at (8.05,0) {};
+    \pic[scale=1.1] at (7.97,0.38) {doc=alagent};
+    \pic at (8.17,0.30) {pen=alagent};
+    \node[slabel] at (8.05,-0.30) {Write seed\\gen.\ script};
+
+    \node[toolstep] (s4) at (10.60,0) {};
+    \pic[scale=1.3] at (10.60,0.38) {gear=altool};
+    \node[slabel,text=altool!90!black] at (10.60,-0.30) {Execute\\coverage tool};
+
+    \foreach \s/\n/\c in {s1/1/alagent, s2/2/alagent, s3/3/alagent, s4/4/altool}
+      \node[stepnum,fill=\c] at ($(\s.north west)+(0.22,0)$) {\n};
+
+    \draw[promptflow] (start.east) -- (s1.west);
+    \draw[agentflow]  (s1.east) -- (s2.west);
+    \draw[agentflow]  (s2.east) -- (s3.west);
+    \draw[agentflow]  (s3.east) -- (s4.west);
+
+    %% ================================================================ %%
+    %% End of cycle: every tool call ends a cycle, budget checked here
+    %% ================================================================ %%
+    \coordinate (D) at (12.45,0);
+    \filldraw[draw=altool,fill=altool!8,line width=0.8pt,line join=round]
+      ($(D)+(-0.42,0)$) -- ($(D)+(0,0.42)$) -- ($(D)+(0.42,0)$)
+      -- ($(D)+(0,-0.42)$) -- cycle;
+    \pic[scale=1.0] at (D) {hourglass=altool};
+    \draw[toolflow] (s4.east) -- ($(D)+(-0.42,0)$);
+    % cycle boundary marker on the tool call
+    \draw[altool,line width=2.2pt] ($(s4.north east)+(0.18,0.05)$)
+      -- ($(s4.south east)+(0.18,-0.05)$);
+    \node[tag,fill=altool,anchor=north east] at ($(s4.south east)+(0.24,-0.05)$)
+      {END OF CYCLE};
+
+    %% budget exhausted -> stop (only here, never mid-cycle)
+    \node[stopnode] (stop) at (12.45,-1.55) {Stop};
+    \draw[failflow] ($(D)+(0,-0.42)$) -- (stop.north);
+    \node[lbl,anchor=center,rotate=90,text=alaff!80!black,font=\wfT\bfseries]
+      at (12.31,-0.82) {limit};
+
+    %% budget left -> coverage delta report decides the next cycle
+    \node[draw=alprompt,fill=alprompt!10,rounded corners=2pt,line width=0.8pt,
+          minimum width=\wfk*1.1cm,minimum height=\wfk*0.8cm,inner sep=0pt,
+          align=center,text=alprompt!80!black]
+      (G) at (12.45,2.00)
+      {{\wfSm\bfseries$\Delta$}\\[-1pt]{\wfS report}};
+    \draw[toolflow] ($(D)+(0,0.42)$) -- (G.south);
+
+    %% error / no gain -> fix and re-run (next cycle, same target)
+    \node[wfstep,minimum width=\wfk*2.0cm,minimum height=\wfk*1.1cm]
+      (fix) at (10.60,2.00) {};
+    \pic[scale=1.1] at (9.92,2.10) {redo=alagent};
+    \pic[scale=0.8] at (10.06,1.88) {lens=alagent};
+    \node[slabel,anchor=west] at (10.24,2.00) {Adapt \&\\fix script};
+    \node[stepnum,fill=alagent] at ($(fix.north west)+(0.22,0)$) {5};
+    \draw[failflow] (G.west) -- (fix.east);
+    \pic at ($(G.west)+(-0.16,0.18)$) {cross=alaff};
+    \draw[agentflow] (fix.south) -- (s4.north);
+
+    %% coverage gain -> next target (next cycle, new target)
+    \draw[promptflow] (G.north) -- (12.45,3.05) -- (2.95,3.05)
+      -- (s1.north);
+    \node[fill=white,inner sep=2pt] at (7.40,3.05) {%
+      \tikz[baseline=-0.6ex,scale=\wfk]\pic{check=alcov};%
+      \hspace{1pt}{\wfS\bfseries\color{alcov!80!black}coverage gain}};
+
+  \end{tikzpicture}
+  \caption[Typical workflow of the LLM agent]{Typical workflow of the LLM agent.}
+  \label{fig:agent-workflow}
+\end{figure}

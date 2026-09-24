@@ -1,4 +1,40 @@
 % !TeX root = ../main.tex
-% Add the above to each chapter to make compiling the PDF easier in some editors.
 
 \chapter{Conclusion}\label{chapter:conclusion}
+
+% Topic / Goal
+This thesis investigated how fuzzers can be given a head start in exposing regressions that manifest in code affected by a commit's changes by optimizing the seed corpus.
+The proposed approach heuristically distills an existing seed corpus and then uses an \ac{LLM} agent to augment it with newly generated seeds.
+To the best of our knowledge, prior work has neither combined distillation with generation nor targeted code that is transitively affected by the change site.
+The closest related work, by Liu et al.~\cite{liuEvaluatingLLMBasedRegression2026}, operates solely on the commit diff.
+It therefore does not address the fact that many bugs manifest outside the changed code region~\cite{zotero-item-324, xiangCriticalCodeGuided2024}, nor does it account for the value of an existing corpus in commit-based scenarios, where the same target code is fuzzed repeatedly.
+
+To close this gap, a TACCO was implemented that proceeds in three stages.
+First, the transitively affected code is identified using \ac{CoI}-Fuzzer, an existing forward-slicing tool by Hundsdorfer~\cite{zotero-item-324}.
+Second, if a corpus is present, it is distilled to a minimal set of seeds that covers the maximal area of affected code.
+Third, the distilled corpus is handed to an \ac{LLM} agent, which autonomously explores the codebase and the corpus, generating new seeds to increase coverage of the affected code.
+
+% Configuration study
+In a first study on six open-source projects, the tuning subjects, the pipeline was run with different starting corpora (empty, distilled, and original) and different scopes of affected code (distance-limited and full) to select the best-performing configuration.
+The pipeline was most effective when supplied with the distilled corpus: compared to the original corpus, the resulting corpora increased coverage of affected code by up to \SI{52.3}{pp} on five of six projects, decreasing it slightly on the sixth, while being \SIrange{42}{98}{\percent} smaller.
+Furthermore, the study showed that restricting the scope of the affected code sacrifices safety.
+Although bounding the scope shrank the target region by a median factor of about ten, the crash site fell outside the bounded region in two of six projects.
+Moreover, it gained only a marginal \SI{1.3}{pp} of coverage within the bounded region, while losing a significant \SI{9.7}{pp} of coverage of the full affected region, demonstrating the value of targeting the full transitive scope.
+
+% Fuzzing study
+A second study evaluated whether this improved corpus quality translates into faster regression exposure with AFL++~\cite{serebryanyOSSFuzzGooglesContinuous2017}.
+The pipeline's corpus was compared against the corpus shipped with each project, on the six tuning subjects and six additional held-out subjects.
+The pipeline did not change how often the regression was detected within the \SI{8}{\hour} campaigns for any project or subject set.
+It did, however, shorten the expected time to exposure by a median of \SI{71}{\minute}, or \SI{31}{\minute} when including the time spent on augmentation.
+This speed-up occurred on seven of the twelve projects and is not statistically significant, so it should be read as a trend rather than a confirmed effect.
+Two factors explain the differences between projects.
+Distillation concentrates the fuzzing budget on the seeds that reveal the regression, but can delay exposure by discarding seeds that closely resemble the required input.
+Augmentation enables the \ac{LLM} agent to generate input structures that the original corpus lacked and partly compensates for those lost during distillation. However, these findings are based on twelve projects, a single fuzzer, and one augmentation run per project, and should be confirmed on a larger scale.
+
+% Outlook
+The findings point to several directions for future work.
+Since distillation can discard seeds that closely resemble the required input, a distillation strategy that preserves structural diversity, rather than maximizing coverage alone, could avoid such delays.
+Similarly, the scope of affected code could be widened incrementally, directing the agent first to code near the change site and extending the target as its coverage grows, combining the focus of a limited scope with the safety of a full one.
+In practice, corpora need not be rebuilt for every commit: an augmented corpus could be maintained and carried forward as the project evolves, with augmentation triggered only when the existing corpus covers little of the affected code, thereby reducing its cost.
+Evaluating the approach with other fuzzers and campaign budgets would further show how well these results generalize.
+Overall, the results suggest that combining distilled versions of existing corpora with \ac{LLM}-based augmentation is a practical way to expose regressions faster in time-limited scenarios.

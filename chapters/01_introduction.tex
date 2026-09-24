@@ -1,41 +1,53 @@
 % !TeX root = ../main.tex
-% Add the above to each chapter to make compiling the PDF easier in some editors.
 
 \chapter{Introduction}\label{chapter:introduction}
 
-\section{Motivation}
-Four in every five bugs have been introduced by recent code changes (regeression)~\cite{zhuRegressionGreyboxFuzzing2021b}
+% Motivation
+Fuzzing is a testing technique that repeatedly executes a program with automatically generated inputs to search for bugs, in particular security vulnerabilities.
+It has become widely adopted in recent years, for example, through OSS-Fuzz, a service by Google that continuously fuzzes open-source projects~\cite{serebryanyOSSFuzzGooglesContinuous2017}.
+In its first five years of operation, OSS-Fuzz exposed more than \num{49000} bugs~\cite{kimBugOssBenchmarkRealworld2024}.
 
-Corpus Quality influence on fuzzing
-% Focus: Works studying why initial seed quality, corpus distillation, and high initial branch coverage give downstream greybox mutators (like AFL++) a headstart. 
-Overall to show: Corpus quality has a significant impact on fuzzing result. (Also explain what good quality means, and name studies that show that these qualities improve fuzzing)
+Notably, the majority of bugs found this way were not present from the start: four in five were introduced by code changes, known as regressions~\cite{zhuRegressionGreyboxFuzzing2021b}.
+Such regressions are best caught before a change reaches production, for instance, as part of a \ac{ci-cd} pipeline, where fuzzing time is limited.
+Consequently, recent work has focused on adapting the fuzzing process to be practical in such environments, both by improving how fuzzers explore modified code and by preparing the inputs they start with~\cite{j.wolffShiftingFuzzingLeft2025, LargeScaleEmpiricalAnalysis}.
 
-First: Corpus influences fuzzing performance
-- EvalFuzzTesting~\cite{kleesEvaluatingFuzzTesting2018} (Study investigated that experimental setups of most studies are flawed and names that a big factor is the initial seed selection, and then do experiments to show so)
+\section{Problem Statement}
+The latter is particularly important because most practical fuzzers, such as AFL++\cite{fioraldiAFLCombiningIncremental2020}, are mutation-based: they take a set of existing inputs, the seed corpus, and mutate them to explore new program behavior.
+Without suitable seeds, such fuzzers rarely reach deep program logic, since valid input structures are unlikely to arise from random mutation alone.
+The seed corpus, therefore, gives the fuzzer its head start, and its quality has a significant impact on fuzzing results~\cite{klees2018}.
+In particular, minimizing a large corpus to a small set of seeds that preserves its coverage, known as corpus distillation, improves fuzzing effectiveness~\cite{herreraCorpusDistillationEffective2020, herreraSeedSelectionSuccessful2021}.
+Likewise, selecting seeds that target the code of interest helps the fuzzer reach it more quickly~\cite {yooImprovingConfigurabilityUnitlevel2021, kimBugOssBenchmarkRealworld2024, canakciTargetFuzzUsingDARTs2022}.
 
-Minimal Corpus is Good:
-- Corpus Distillation for Effective Fuzzing \cite{herreraCorpusDistillationEffective2020} -> Distill Term!! (Study that compares full, distilled and "empty" (only header present) and comes to conclusion that for big corpora minimizing them is always good)
-- Seed Selection for Successful Fuzzing \cite{herreraSeedSelectionSuccessful2021}
+Mutation-based fuzzers, however, assume that such a corpus already exists.
+In practice, seeds must first be created by someone or something, and existing corpora may lack the input structures needed to reach the changed code.
+Related work has therefore explored generating seeds from scratch, most recently using \acp{LLM}~\cite{liuEvaluatingLLMBasedRegression2026}.
+These approaches consider only the changed code itself, although many bugs manifest in code that is merely affected by the change~\cite{zotero-item-324}.
+Moreover, they ignore that in commit-based fuzzing, the same project is fuzzed repeatedly, so an existing corpus is often available and can be highly valuable.
 
-Targeted Corpus (Seed selection) is good:
-ContinousFuzzingSAP, Bugoss~\cite{yooImprovingConfigurabilityUnitlevel2021}~\cite{kimBugOssBenchmarkRealworld2024} (Select based on functional Coverage)
-DART corpus ~\cite{canakciTargetFuzzUsingDARTs2022} (Distance-based selection to target site of seeds)
+\section{Proposed Solution}
+This thesis proposes TACCO (Targeted Affected-Code Corpus Optimization), a pipeline that improves the seed corpus before fuzzing starts, giving the fuzzer a head start on regressions in time-limited scenarios.
+The approach builds on the \ac{CoI}-Fuzzer, an existing tool by Hundsdorfer~\cite{zotero-item-324}, to first identify code that is transitively affected by a commit.
+If a corpus exists, it is heuristically distilled to the seeds most relevant to that code.
+An \ac{LLM} agent then uses its semantic understanding of the code, which a fuzzer lacks, to generate additional seeds that cover affected code the corpus does not yet reach.
+The two techniques thus complement each other: the \ac{LLM} provides well-formed inputs with the structure needed to reach the affected code, while the fuzzer mutates them into the malformed variants that ultimately trigger the crash.
 
+\section{Results}
+The approach was evaluated in two empirical studies on real-world regressions from the BugOSS benchmark~\cite{kimBugOssBenchmarkRealworld2024}.
 
-I want to reframe things a  bit.
+The first study determined the optimal pipeline configuration across six projects.
+Starting from the distilled corpus increased coverage of affected code over the project's own corpus by up to \SI{52.3}{pp} on five of six projects, with a slight decrease of \SI{2.2}{pp} on the sixth, while producing corpora \SIrange{42}{98}{\percent} smaller.
+Bounding the affected code to the vicinity of the change site proved unsafe, as it excluded the crash site in two of six projects and reduced coverage of the full affected region by a median of \SI{9.7}{pp}.
 
-The setting is finding bugs introduced by commit changed code because here most bugs are introduces. That is best done before introducing the commit into live code (CI/CD) flow.
+The second study compared this corpus against the corpus shipped with each project in AFL++ campaigns on twelve projects.
+While the pipeline did not change how often regressions were found, it shortened the median expected time to exposure by \SI{71}{\minute}, or \SI{31}{\minute} including augmentation time, although this trend is not statistically significant.
+The differences are attributed to two factors: distillation focuses the fuzzing budget on relevant seeds but can discard seeds that closely resemble the required input, whereas augmentation adds input structures that the original corpus lacked and partly compensates for such losses.
 
-All methods are essentially about generating input for a target program until we find a crash.
-
-Mutation Fuzzers do so by taking a set reference input and mutating them until we find a bug. Without starting with such seeds fuzzing is not very effective because we never get deep into the code. They need that "head" start.
-
-They assume that these seeds exisit  new ones based on that.  But when they exisit fuzzing is highly effective at revealing bugs that are hard to find otherwise. More advanded version of fuzzing have then looked into mutationing the seed towards commit changed or later additionaly affected code to trigger regression bugs faster. 
-
-
-
-Now that assumption that we have such corpus out of thin air is faulty because the seeds have to be created first by someone or something in the first place. Related work has looked into generation of such seeds out of thin air via various methods and then use the effective mutation fuzzing idea afterwards (either with traditional approaches or using customized solutions).
-
-
-
-Our assumption is that we give an even better headstart to mutation fuzzing by creating seeds that already cover as much of affected code as possible by using the semantic capablities of LLMs to understand code (which a fuzzer cant't) and then use a fuzzer afterwards to mutatate (because doing this with LMM would very ineffective).  Showing the creation out of thin air is something we do during evaluation with our tool. One step futher is then to think that we alteratilvy have already a seed corpus generated via one of the various methods, but we want to improve it, but generating additional seeds that are targeted towards these affected areas (because perhaps the exising corpus is missing a seed that covers a certain kind of input format or subformat) or slimming it down first to the most relevenant seeds and then generate addiotonal seeds to generate a more overall targeted corpus (there is work that shows that did this prefiltering of seeds to make them more targeted and showed great sucess with it).
+\section{Contributions}
+To summarize, this thesis makes the following contributions:
+\begin{itemize}
+    \item TACCO, a pipeline that combines corpus distillation and \ac{LLM}-based seed generation to target the code affected by a commit,
+    \item a tool that distills a given corpus to a minimal set of seeds covering the code affected by a commit,
+    \item an \ac{LLM} agent that generates targeted seeds to augment any given corpus, increasing coverage of the affected code,
+    \item an empirical study of how the starting corpus and the target scope affect the generated corpus, and
+    \item an empirical study comparing the fuzzing effectiveness of AFL++ with the original and the distilled and augmented corpus, including an analysis of the factors behind the observed differences.
+\end{itemize}

@@ -233,11 +233,6 @@
 \end{tikzpicture}}
 \end{minipage}
  
-\caption{A regression whose manifestation site lies outside the changed code
-  (curl commit \texttt{dd7521b}, reported by OSS-Fuzz issue~42539533).
-  \texttt{strlen\_url()} sizes the output buffer and \texttt{strcpy\_url()}
-  fills it. The commit changes the predicate in the writer but not the
-  identical one in the sizer, so a non-printable byte below \texttt{0x80} is
-  budgeted one byte and written as three.}
+\caption{Illustration of a regression in curl that manifests outside the changed code.}
 \label{fig:pdg}
 \end{figure}

@@ -10,6 +10,9 @@
 % inside \lstdefinestyle is unreliable across listings versions and is silently
 % overridden by a global \lstset{literate=...} in some preambles. The escape
 % character is @, which must therefore not occur in the listed source.
+%
+% The listing is split into two side-by-side minipages to save vertical space.
+% Long lines were wrapped by hand; continuation lines carry an empty gutter.
 
 \definecolor{mkA}{HTML}{7C3AED} % [A] affected
 \definecolor{mkC}{HTML}{15803D} % [C] covered
@@ -29,7 +32,7 @@
 \lstdefinestyle{annotatedsrc}{
   language=C,
   morekeywords={bool,TRUE,FALSE},
-  basicstyle=\fontsize{7}{8}\selectfont\ttfamily,
+  basicstyle=\fontsize{6.5}{7.5}\selectfont\ttfamily,
   keywordstyle=\color{srcKw}\bfseries,
   commentstyle=\color{srcCm}\itshape,
   stringstyle=\color{srcSt},
@@ -38,72 +41,77 @@
   showstringspaces=false,
   frame=single,
   rulecolor=\color{black!20},
-  framesep=5pt,
-  xleftmargin=6pt,
-  aboveskip=2pt,
-  belowskip=2pt,
+  framesep=3pt,
+  xleftmargin=3.4pt,  % = framesep + rule width, keeps the frame inside the minipage
+  xrightmargin=3.4pt,
+  aboveskip=0pt,
+  belowskip=0pt,
   escapeinside={@}{@},
 }
 
-\begin{figure}[htbp]
+
+\begin{figure}
   \centering
-  \begin{lstlisting}[style=annotatedsrc]
-@\annB\annB@ static void strcpy_url(char *output, const char *url, bool relative)
-@\annA\annC@  {
-@\annB\annC@    /* we must add this with whitespace-replacing */
-@\annB\annC@    bool left = TRUE;
-@\annB\annC@    const unsigned char *iptr;
-@\annB\annC@    char *optr = output;
-@\annB\annC@    const unsigned char *host_sep = (const unsigned char *) url;
+  \begin{minipage}[t]{0.49\linewidth}
+  % showlines=true keeps the trailing empty lines that pad this column
+  % to the same height as the right one (22 + 3 = 25 lines)
+  \begin{lstlisting}[style=annotatedsrc,showlines=true]
+@\annB\annB@ static void strcpy_url(char *output, const char *url,
+@\annB\annB@                        bool relative)
+@\annA\annC@ {
+@\annB\annC@   /* we must add this with whitespace-replacing */
+@\annB\annC@   bool left = TRUE;
+@\annB\annC@   const unsigned char *iptr;
+@\annB\annC@   char *optr = output;
+@\annB\annC@   const unsigned char *host_sep =
+@\annB\annB@     (const unsigned char *) url;
 
-@\annB\annC@    if(!relative)
-@\annA\annC@      host_sep = (const unsigned char *) find_host_sep(url);
+@\annB\annC@   if(!relative)
+@\annA\annC@     host_sep =
+@\annB\annB@       (const unsigned char *) find_host_sep(url);
 
-@\annA\annC@    for(iptr = (unsigned char *)url;    /* read from here */
-@\annA\annC@        *iptr;         /* until zero byte */
-@\annA\annC@        iptr++) {
+@\annA\annC@   for(iptr = (unsigned char *)url; /* read from here */
+@\annA\annC@       *iptr;         /* until zero byte */
+@\annA\annC@       iptr++) {
 
-@\annA\annC@      if(iptr < host_sep) {
-@\annA\annC@        *optr++ = *iptr;
-@\annB\annC@        continue;
-@\annB\annC@      }
+@\annA\annC@     if(iptr < host_sep) {
+@\annA\annC@       *optr++ = *iptr;
+@\annB\annC@       continue;
+@\annB\annC@     }
 
-@\annA\annC@      switch(*iptr) {
-@\annB\annC@      case '?':
-@\annA\annC@        left = FALSE;
-@\annB\annC@        /* fall through */
-@\annB\annC@      default:
-@\annA\annP@        if(!ISPRINT(*iptr)) {
-@\annA\annU@          snprintf(optr, 4, "%%%02x", *iptr);
-@\annB\annU@          optr += 3;
-@\annB\annU@        }
-@\annB\annB@        else
-@\annA\annC@          *optr++=*iptr;
-@\annA\annC@        break;
-@\annB\annU@      case ' ':
-@\annA\annU@        if(left) {
-@\annA\annU@          *optr++='%'; /* add a '%' */
-@\annB\annU@          *optr++='2'; /* add a '2' */
-@\annB\annU@          *optr++='0'; /* add a '0' */
-@\annB\annU@        }
-@\annB\annB@        else
-@\annA\annU@          *optr++='+'; /* add a '+' here */
-@\annA\annC@        break;
-@\annB\annC@      }
-@\annA\annC@    }
-@\annA\annC@    *optr = 0; /* zero terminate output buffer */
 
-@\annB\annC@  }
+
   \end{lstlisting}
-  \caption[Coverage-annotated source in the agent workspace]{%
-    Excerpt of the coverage-annotated source tree as the agent sees it, here
-    \texttt{strcpy\_url} from cURL. The gutter carries an affected marker and
-    a coverage marker per line: \annA{} marks membership in the commit-affected
-    slice, and \annC, \annP{} and \annU{} denote covered, partially covered, and
-    uncovered lines under the current corpus. The agent targets \annA\annU{}
-    lines first and \annA\annP{} lines as a fallback. Here the non-printable
-    escaping branch and the entire space-encoding branch are unreached, while the
-    surrounding loop is covered, which localizes the missing input property to
-    URLs containing spaces or non-printable characters.}
+  \end{minipage}\hfill
+  \begin{minipage}[t]{0.49\linewidth}
+  \begin{lstlisting}[style=annotatedsrc]
+@\annA\annC@     switch(*iptr) {
+@\annB\annC@     case '?':
+@\annA\annC@       left = FALSE;
+@\annB\annC@       /* fall through */
+@\annB\annC@     default:
+@\annA\annP@       if(!ISPRINT(*iptr)) {
+@\annA\annU@         snprintf(optr, 4, "%%%02x", *iptr);
+@\annB\annU@         optr += 3;
+@\annB\annU@       }
+@\annB\annB@       else
+@\annA\annC@         *optr++=*iptr;
+@\annA\annC@       break;
+@\annB\annU@     case ' ':
+@\annA\annU@       if(left) {
+@\annA\annU@         *optr++='%'; /* add a '%' */
+@\annB\annU@         *optr++='2'; /* add a '2' */
+@\annB\annU@         *optr++='0'; /* add a '0' */
+@\annB\annU@       }
+@\annB\annB@       else
+@\annA\annU@         *optr++='+'; /* add a '+' here */
+@\annA\annC@       break;
+@\annB\annC@     }
+@\annA\annC@   }
+@\annA\annC@   *optr = 0; /* zero terminate output buffer */
+@\annB\annC@ }
+  \end{lstlisting}
+  \end{minipage}
+  \caption[Example of coverage-annotated source code in the agent workspace]{Example of coverage-annotated source code in the agent workspace.}
   \label{fig:annotated-source}
 \end{figure}
