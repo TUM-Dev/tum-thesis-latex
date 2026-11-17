@@ -9,10 +9,24 @@ stages:
 
 pdf:
   stage: build
+  variables:
+    GIT_DEPTH: 0 # `make diff` needs the full history with tags
+  before_script:
+    # git and the Encode::Locale Perl module (for latexdiff) are not in the TeX Live image.
+    - apt-get update && apt-get install -y --no-install-recommends git libencode-locale-perl
   script:
     - make pdf
+    # Marks up everything changed since the newest review-* tag (see README).
+    - git config --global --add safe.directory "$CI_PROJECT_DIR"
+    - |
+      if git describe --tags --abbrev=0 --match 'review-*' >/dev/null 2>&1; then
+        make diff
+      else
+        echo "No review-* tag yet, skipping."
+      fi
   artifacts:
     paths:
       - build/main.pdf
       - build/fachschaft_print.pdf
+      - build/changes.pdf
     expire_in: 1 week

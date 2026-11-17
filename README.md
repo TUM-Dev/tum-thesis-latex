@@ -11,6 +11,28 @@ If your editor supports compiling LaTeX, set it up to use `pdflatex` and `biber`
  * To use Visual Studio Code install the [LaTeX Workshop](https://marketplace.visualstudio.com/items?itemName=James-Yu.latex-workshop) extension. Then as soon as you click on "Save" it automatically compiles your thesis for you without having to configure anything.
  * Look for `TODO` comments in the provided files. Start at `main.tex`.
 
+## Review workflow with your advisor
+
+Your advisor wants to give feedback on what is new, not search for the changes by comparing two PDFs. So CI builds `changes.pdf` on every push: your thesis with everything changed since the last review marked up. Added text is blue, removed text is struck out in red, and all lines are numbered, so feedback can point to "l. 312".
+
+Give your advisor access to the repository. They can then download the newest PDFs at any time, without you sending files:
+
+ * GitHub: `https://github.com/<user>/<repo>/releases/latest/download/main.pdf` and `.../changes.pdf`
+ * GitLab: `https://<gitlab-host>/<group>/<repo>/-/jobs/artifacts/master/raw/build/changes.pdf?job=pdf` (same for `main.pdf`)
+
+The workflow then is:
+
+ 1. Push your work. Your advisor reviews `changes.pdf` whenever it suits them and sends you feedback.
+ 2. When you receive the feedback, tag the version they reviewed, so the next `changes.pdf` starts from there:
+    ```sh
+    git tag review-$(date +%F) && git push origin review-$(date +%F)
+    ```
+    If you pushed new commits in the meantime, append the reviewed commit to `git tag` (GitHub shows it in the release notes).
+
+Until the first `review-*` tag exists, CI builds only `main.pdf`.
+
+To build `changes.pdf` locally, run `make diff` (needs `git` and `latexdiff`, which is included in TeX Live). `make diff BASE=<rev>` compares against any other commit, branch or tag, e.g. `make diff BASE=HEAD~3`.
+
 If you are new to LaTeX, the [Overleaf Documentation][overleaf-learn] or the [LaTeX Wikibook][latex-wikibook] might help.
 
 If you still have problems with the template, feel free to [create an issue][issue]. For general LaTeX questions, use [TeX StackExchange][tex-se].

@@ -1,0 +1,29 @@
+% Markup for changes.pdf (`make diff`), used by latexdiff instead of its own
+% preamble. Based on `latexdiff --show-preamble`, but added text is only
+% coloured: the default wavy underline is noisy and blocks hyphenation, which
+% changes the line breaks.
+\RequirePackage[normalem]{ulem}
+% Line numbers run through the whole document, so feedback can say "l. 312".
+\RequirePackage[displaymath,mathlines]{lineno}
+\linenumbers
+\providecommand{\DIFadd}[1]{{\protect\color{blue}#1}}
+\providecommand{\DIFdel}[1]{{\protect\color{red}\sout{#1}}}
+\providecommand{\DIFaddbegin}{}
+\providecommand{\DIFaddend}{}
+\providecommand{\DIFdelbegin}{}
+\providecommand{\DIFdelend}{}
+\providecommand{\DIFmodbegin}{}
+\providecommand{\DIFmodend}{}
+\providecommand{\DIFaddFL}[1]{\DIFadd{#1}}
+\providecommand{\DIFdelFL}[1]{\DIFdel{#1}}
+\providecommand{\DIFaddbeginFL}{}
+\providecommand{\DIFaddendFL}{}
+\providecommand{\DIFdelbeginFL}{}
+\providecommand{\DIFdelendFL}{}
+% Changed lines in code listings: latexdiff prints added lines in bold and
+% hides removed ones. Colour them like the text instead.
+\AtBeginDocument{\ifdefined\lstdefinelanguage
+  \lstdefinelanguage{DIFcode}{%
+    moredelim=[il][\color{red}]{\%DIF\ <\ },
+    moredelim=[il][\color{blue}]{\%DIF\ >\ }}%
+\fi}
