@@ -8,15 +8,63 @@ jobs:
     container: texlive/texlive:latest
 
     steps:
-    - uses: actions/checkout@v4
+    # `make diff` needs git and the full history with tags. latexdiff needs the
+    # Encode::Locale Perl module. The TeX Live image ships neither.
+    - name: Install dependencies
+      run: apt-get update && apt-get install -y --no-install-recommends git libencode-locale-perl
+
+    - uses: actions/checkout@v7
+      with:
+        fetch-depth: 0
 
     - name: Build pdf
       run: make pdf
 
+    # Marks up everything changed since the newest review-* tag (see README).
+    - name: Build changes pdf
+      run: |
+        git config --global --add safe.directory "$GITHUB_WORKSPACE"
+        if git describe --tags --abbrev=0 --match 'review-*' >/dev/null 2>&1; then
+          make diff
+        else
+          echo "No review-* tag yet, skipping."
+        fi
+
     - name: Upload pdf
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       with:
         name: thesis
         path: build/*.pdf
         if-no-files-found: error
         retention-days: 14
+
+  # Replaces one rolling release on every push to the default branch, so the
+  # newest PDFs are always at the same links (see README):
+  # releases/latest/download/main.pdf and releases/latest/download/changes.pdf
+  publish:
+    needs: build
+    if: github.event_name == 'push' && github.ref_name == github.event.repository.default_branch
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    concurrency:
+      group: publish-pdf
+      cancel-in-progress: true
+
+    steps:
+    - uses: actions/download-artifact@v8
+      with:
+        name: thesis
+        path: dl
+
+    - name: Publish latest pdf
+      env:
+        GH_TOKEN: ${{ github.token }}
+        GH_REPO: ${{ github.repository }}
+      run: |
+        gh release delete latest-build --cleanup-tag --yes || true
+        gh release create latest-build dl/*.pdf \
+          --target "$GITHUB_SHA" \
+          --title "Latest build ($(date -u +%F))" \
+          --notes "Built from commit ${GITHUB_SHA::7}. Replaced on every push." \
+          --latest
